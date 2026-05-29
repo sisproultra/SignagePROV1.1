@@ -1,0 +1,8 @@
+{
+  "name": "SignagePROV1.1",
+  "description": "Sistema centralizado de gestión y distribución remota de contenidos para pantallas publicitarias en tiendas físicas.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
