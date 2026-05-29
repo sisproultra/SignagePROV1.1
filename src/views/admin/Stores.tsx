@@ -74,7 +74,14 @@ export default function Stores() {
 
   const handleCopyLink = (screenId: string) => {
     const randomSuffix = Math.random().toString(36).substring(2, 7);
-    const url = `${window.location.origin}/screen/${screenId}_${randomSuffix}`;
+    const s_url = localStorage.getItem('leonisa_supabase_url');
+    const s_key = localStorage.getItem('leonisa_supabase_anon_key');
+    let url = `${window.location.origin}/screen/${screenId}_${randomSuffix}`;
+    
+    if (s_url && s_key) {
+      url += `?s_url=${encodeURIComponent(s_url)}&s_key=${encodeURIComponent(s_key)}`;
+    }
+    
     navigator.clipboard.writeText(url);
     setCopiedId(screenId);
     setTimeout(() => {
@@ -298,7 +305,16 @@ export default function Stores() {
                         <span className="text-[8.5px] font-extrabold uppercase font-mono tracking-tighter">Copiar Link</span>
                       </button>
                       <a 
-                        href={`/screen/${screen.id}_${Math.random().toString(36).substring(2, 7)}`} 
+                        href={(() => {
+                          const randomSuffix = Math.random().toString(36).substring(2, 7);
+                          const s_url = localStorage.getItem('leonisa_supabase_url');
+                          const s_key = localStorage.getItem('leonisa_supabase_anon_key');
+                          let url = `/screen/${screen.id}_${randomSuffix}`;
+                          if (s_url && s_key) {
+                            url += `?s_url=${encodeURIComponent(s_url)}&s_key=${encodeURIComponent(s_key)}`;
+                          }
+                          return url;
+                        })()}
                         target="_blank" 
                         rel="noopener noreferrer"
                         className="bg-slate-800/40 border border-slate-850 hover:border-rose-500/30 text-slate-450 hover:text-rose-400 p-1.5 px-2 rounded-lg transition-all"

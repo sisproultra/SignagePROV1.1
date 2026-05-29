@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
-import { db, doc, onSnapshot, updateDoc, getDoc, addDoc, collection, query, where, getDocs } from '../lib/supabase';
+import { db, doc, onSnapshot, updateDoc, getDoc, addDoc, collection, query, where, getDocs, updateSupabaseConfig } from '../lib/supabase';
 import { motion, AnimatePresence } from 'motion/react';
 import { Loader2, AlertCircle, MonitorOff } from 'lucide-react';
 
@@ -112,6 +112,23 @@ export default function Player() {
 
     const startRealtimeScreenStream = async () => {
       try {
+        // Parse and automatically persist/synchronize Supabase connection from the URL parameters
+        try {
+          const urlParams = new URLSearchParams(window.location.search);
+          const sUrl = urlParams.get('s_url');
+          const sKey = urlParams.get('s_key');
+          if (sUrl && sKey) {
+            console.log('[Player] Sincronización de base de datos remota detectada. Vinculando...');
+            updateSupabaseConfig(sUrl, sKey);
+            
+            // Clean URL query parameters to avoid showing active keys in the address bar
+            const cleanUrl = window.location.pathname;
+            window.history.replaceState(null, '', cleanUrl);
+          }
+        } catch (urlErr) {
+          console.error('[Player] Error al parsear credenciales de auto-configuración:', urlErr);
+        }
+
         const docRef = doc(db, 'screens', cleanId);
         const docSnap = await getDoc(docRef);
         let targetId = cleanId;
