@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
-  db, storage, supabase,
+  db, storage, supabase, updateSupabaseConfig,
   collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc, updateDoc,
   ref as fbRef, uploadBytesResumable, getDownloadURL 
 } from '../../lib/supabase';
@@ -16,6 +16,35 @@ export default function ContentLibrary() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [filter, setFilter] = useState('all');
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Supabase runtime config states (saved to localStorage for seamless fallback)
+  const [isSupaModalOpen, setIsSupaModalOpen] = useState(false);
+  const [supaUrl, setSupaUrl] = useState(
+    localStorage.getItem('leonisa_supabase_url') || 
+    // @ts-ignore
+    import.meta.env.VITE_SUPABASE_URL || 
+    ''
+  );
+  const [supaKey, setSupaKey] = useState(
+    localStorage.getItem('leonisa_supabase_anon_key') || 
+    // @ts-ignore
+    import.meta.env.VITE_SUPABASE_ANON_KEY || 
+    ''
+  );
+  const [hasSupaClient, setHasSupaClient] = useState(!!supabase);
+
+  const handleSaveSupaConfig = (e: React.FormEvent) => {
+    e.preventDefault();
+    const success = updateSupabaseConfig(supaUrl, supaKey);
+    if (success) {
+      setHasSupaClient(true);
+      setIsSupaModalOpen(false);
+      alert('¡Supabase configurado y conectado con éxito!');
+      window.location.reload();
+    } else {
+      alert('Error al inicializar el cliente de Supabase. Revisa las credenciales ingresadas.');
+    }
+  };
   
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -146,7 +175,7 @@ export default function ContentLibrary() {
 
   const syncFromSupabaseStorage = async () => {
     if (!supabase) {
-      alert("El cliente de Supabase no está activo. Revisa tu archivo .env o la configuración de conexión.");
+      setIsSupaModalOpen(true);
       return;
     }
 
@@ -395,6 +424,17 @@ export default function ContentLibrary() {
             >
               <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
               {syncing ? 'Sincronizando...' : 'Sincronizar Storage (Supabase)'}
+            </button>
+
+            <button 
+              onClick={() => setIsSupaModalOpen(true)}
+              type="button"
+              className="px-4 py-2.5 rounded-xl text-xs font-bold transition-all border flex items-center gap-2 bg-slate-900 border-slate-800 text-slate-400 hover:text-white hover:border-slate-700 cursor-pointer"
+              title="Configurar Conexión Supabase"
+            >
+              <Settings className="w-4 h-4 text-emerald-450" />
+              <span>Conexión</span>
+              <span className={`w-2 h-2 rounded-full ${hasSupaClient ? 'bg-emerald-400 animate-pulse shadow-[0_0_8px_#34d399]' : 'bg-amber-400 shadow-[0_0_8px_#fbbf24]'}`} />
             </button>
 
             <button 
@@ -1203,6 +1243,100 @@ serve(async (req) => {
             </div> {/* End Columna Derecha */}
           </div> {/* End Grid */}
         </form>
+          </div>
+        </div>
+      )}
+
+      {/* Supabase Connection Configuration Modal */}
+      {isSupaModalOpen && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-3 sm:p-4 bg-slate-950/90 backdrop-blur-md">
+          <div className="bg-slate-900 rounded-[2.5rem] w-full max-w-xl p-6 sm:p-10 shadow-2xl border border-white/5 mx-auto">
+            <div className="flex justify-between items-center mb-6 pb-4 border-b border-white/5">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-emerald-500/10 rounded-2xl border border-emerald-500/20">
+                  <Server className="w-5 h-5 text-emerald-400" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-white tracking-tight">Sincronizar Supabase</h3>
+                  <p className="text-xs text-slate-400">Verifica o ingresa tu enlace de conexión en vivo.</p>
+                </div>
+              </div>
+              <button 
+                type="button"
+                onClick={() => setIsSupaModalOpen(false)}
+                className="text-slate-400 hover:text-white transition-all bg-white/5 hover:bg-white/10 w-8 h-8 rounded-full flex items-center justify-center cursor-pointer text-lg"
+              >
+                &times;
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveSupaConfig} className="space-y-6">
+              <div className="bg-slate-950/60 p-4 rounded-2xl border border-white/5 space-y-2">
+                <p className="text-xs text-slate-400 leading-normal">
+                  Puedes conectar directamente tu proyecto de Supabase para recuperar imágenes y videos desde tu bucket <code className="text-emerald-400 font-mono">&apos;signage-contents&apos;</code>.
+                </p>
+                <div className="flex items-center gap-2 text-[10px] font-mono">
+                  <span className="text-slate-500">Estado actual:</span>
+                  {hasSupaClient ? (
+                    <span className="text-emerald-400 font-bold">&#9679; Conectado (En línea)</span>
+                  ) : (
+                    <span className="text-amber-500 font-bold">&#9679; Local Offline Sandbox</span>
+                  )}
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="text-[10px] font-extrabold uppercase text-slate-400 block mb-2 tracking-widest">
+                    Supabase Project URL
+                  </label>
+                  <input
+                    type="url"
+                    required
+                    className="w-full bg-slate-950 text-white px-4 py-3 rounded-xl border border-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 transition-all font-mono text-xs"
+                    value={supaUrl}
+                    onChange={(e) => setSupaUrl(e.target.value)}
+                    placeholder="https://gswqxygclbyepnpsptqp.supabase.co"
+                  />
+                  <p className="text-[9px] text-slate-500 mt-1 font-mono">
+                    Ingresa el subdominio principal de tu API de Supabase.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-extrabold uppercase text-slate-400 block mb-2 tracking-widest">
+                    Supabase Anon/Public Key
+                  </label>
+                  <textarea
+                    required
+                    rows={3}
+                    className="w-full bg-slate-950 text-white px-4 py-3 rounded-xl border border-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 transition-all font-mono text-xs resize-none"
+                    value={supaKey}
+                    onChange={(e) => setSupaKey(e.target.value)}
+                    placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                  />
+                  <p className="text-[9px] text-slate-500 mt-1 font-mono">
+                    Usa la clave ANON pública segura de tu proyecto de Supabase.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-4 border-t border-white/5">
+                <button
+                  type="button"
+                  onClick={() => setIsSupaModalOpen(false)}
+                  className="flex-1 py-3 text-xs font-bold text-slate-400 hover:text-white transition-all uppercase tracking-widest cursor-pointer bg-white/5 hover:bg-white/10 rounded-xl"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-3 text-xs font-bold bg-emerald-500 text-slate-950 rounded-xl hover:bg-emerald-400 transition-all uppercase tracking-widest cursor-pointer shadow-lg shadow-emerald-500/10"
+                >
+                  Guardar y Sincronizar
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

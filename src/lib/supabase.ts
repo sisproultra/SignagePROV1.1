@@ -8,23 +8,63 @@
 import { createClient } from '@supabase/supabase-js';
 
 // Supabase environment variables containing automatic cleaning to prevent PGRST125 errors
-const rawSupabaseUrl = (import.meta as any).env.VITE_SUPABASE_URL || '';
-// Clean the URL: strip trailing slashes, spaces, and unwanted rest/v1 subpaths
-let cleanSupabaseUrl = rawSupabaseUrl.trim().replace(/\/+$/, '');
-if (cleanSupabaseUrl.endsWith('/rest/v1')) {
-  cleanSupabaseUrl = cleanSupabaseUrl.substring(0, cleanSupabaseUrl.length - 8);
+// @ts-ignore
+const envUrl = import.meta.env.VITE_SUPABASE_URL || '';
+// @ts-ignore
+const envKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+
+// Retrieve from localStorage if env is not found
+const storedUrl = typeof window !== 'undefined' ? localStorage.getItem('leonisa_supabase_url') || '' : '';
+const storedKey = typeof window !== 'undefined' ? localStorage.getItem('leonisa_supabase_anon_key') || '' : '';
+
+const rawSupabaseUrl = envUrl || storedUrl || '';
+const rawSupabaseKey = envKey || storedKey || '';
+
+export let supabase: any = null;
+
+export function updateSupabaseConfig(url: string, key: string) {
+  const cleanUrl = url.trim().replace(/\/+$/, '');
+  let sanitizedUrl = cleanUrl;
+  if (sanitizedUrl.endsWith('/rest/v1')) {
+    sanitizedUrl = sanitizedUrl.substring(0, sanitizedUrl.length - 8);
+  }
+  sanitizedUrl = sanitizedUrl.replace(/\/+$/, '');
+
+  if (typeof window !== 'undefined') {
+    localStorage.setItem('leonisa_supabase_url', sanitizedUrl);
+    localStorage.setItem('leonisa_supabase_anon_key', key.trim());
+  }
+
+  if (sanitizedUrl && key.trim()) {
+    try {
+      supabase = createClient(sanitizedUrl, key.trim());
+      console.log("🚀 Supabase Client re-initialized successfully dynamically!");
+      return true;
+    } catch (err) {
+      console.error("Failed to re-initialize Supabase:", err);
+      return false;
+    }
+  }
+  return false;
 }
-cleanSupabaseUrl = cleanSupabaseUrl.replace(/\/+$/, '');
 
-const supabaseUrl = cleanSupabaseUrl || null;
-const supabaseAnonKey = ((import.meta as any).env.VITE_SUPABASE_ANON_KEY || '').trim() || null;
+// Initial automatic load
+const initialUrl = rawSupabaseUrl.trim();
+const initialKey = rawSupabaseKey.trim();
 
-export const supabase = (supabaseUrl && supabaseAnonKey) 
-  ? createClient(supabaseUrl, supabaseAnonKey) 
-  : null;
+if (initialUrl && initialKey) {
+  let cleanSupabaseUrl = initialUrl.replace(/\/+$/, '');
+  if (cleanSupabaseUrl.endsWith('/rest/v1')) {
+    cleanSupabaseUrl = cleanSupabaseUrl.substring(0, cleanSupabaseUrl.length - 8);
+  }
+  cleanSupabaseUrl = cleanSupabaseUrl.replace(/\/+$/, '');
 
-if (supabase) {
-  console.log("🚀 Supabase Client initialized successfully! Live synced modes enabled.");
+  try {
+    supabase = createClient(cleanSupabaseUrl, initialKey);
+    console.log("🚀 Supabase Client initialized successfully! Live synced modes enabled.");
+  } catch (error) {
+    console.error("Failed to initialize Supabase client:", error);
+  }
 } else {
   console.log("📡 Supabase configuration not yet set in environment. Running in Local Offline Mock mode.");
 }
