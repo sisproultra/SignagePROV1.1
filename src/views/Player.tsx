@@ -116,9 +116,28 @@ export default function Player() {
         let targetId = cleanId;
 
         if (!docSnap.exists()) {
-          console.log('[Player] ID directo no encontrado. Buscando de forma insensible a mayúsculas/minúsculas...');
+          console.log('[Player] ID directo no encontrado. Buscando coincidencias insensibles o alternativas...');
           const screensSnap = await getDocs(collection(db, 'screens'));
-          const matchingDoc = screensSnap.docs.find(d => d.id.toLowerCase() === cleanId.toLowerCase());
+          const matchingDoc = screensSnap.docs.find(d => {
+            const dbId = d.id.toLowerCase();
+            const urlId = cleanId.toLowerCase();
+            
+            // Check direct case-insensitive match
+            if (dbId === urlId) return true;
+            
+            // Check if URL ends with a random suffix we appended (e.g. screen_1_abc12 where DB is screen_1)
+            if (urlId.startsWith(dbId + '_') && urlId.length > dbId.length + 1) {
+              return true;
+            }
+            
+            // Reverse prefix check just in case
+            if (dbId.startsWith(urlId + '_') && dbId.length > urlId.length + 1) {
+              return true;
+            }
+            
+            return false;
+          });
+
           if (matchingDoc) {
             targetId = matchingDoc.id;
             window.history.replaceState(null, '', `/screen/${targetId}`);

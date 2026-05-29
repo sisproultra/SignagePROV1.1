@@ -759,9 +759,9 @@ export async function addDoc(collectionRef: any, data: any) {
   }
 
   if (!supabase) {
-    const id = Math.random().toString(36).substring(2, 10);
+    const id = resolvedData.id || Math.random().toString(36).substring(2, 10);
     const items = getLocalCollection(colPath);
-    items.push({ id, ...resolvedData });
+    items.push({ ...resolvedData, id });
     setLocalCollection(colPath, items);
     notifyListeners(colPath);
     return { id };

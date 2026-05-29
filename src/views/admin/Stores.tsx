@@ -73,7 +73,8 @@ export default function Stores() {
   };
 
   const handleCopyLink = (screenId: string) => {
-    const url = `${window.location.origin}/screen/${screenId}`;
+    const randomSuffix = Math.random().toString(36).substring(2, 7);
+    const url = `${window.location.origin}/screen/${screenId}_${randomSuffix}`;
     navigator.clipboard.writeText(url);
     setCopiedId(screenId);
     setTimeout(() => {
@@ -99,7 +100,18 @@ export default function Stores() {
       await updateDoc(doc(db, 'screens', screenToEdit.id), newScreen);
     } else {
       if (!selectedStoreId) return;
+
+      const randomSuffix = Math.random().toString(36).substring(2, 7);
+      const slugName = newScreen.name
+        .toLowerCase()
+        .normalize('NFD') // remove accents
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]+/g, '-') // replace non-alphanumeric with hyphens
+        .replace(/(^-|-$)+/g, ''); // trim hyphens
+      const customId = `scr-${slugName || 'pantalla'}-${randomSuffix}`;
+
       await addDoc(collection(db, 'screens'), {
+        id: customId,
         ...newScreen,
         storeId: selectedStoreId,
         status: 'offline',
@@ -286,7 +298,7 @@ export default function Stores() {
                         <span className="text-[8.5px] font-extrabold uppercase font-mono tracking-tighter">Copiar Link</span>
                       </button>
                       <a 
-                        href={`/screen/${screen.id}`} 
+                        href={`/screen/${screen.id}_${Math.random().toString(36).substring(2, 7)}`} 
                         target="_blank" 
                         rel="noopener noreferrer"
                         className="bg-slate-800/40 border border-slate-850 hover:border-rose-500/30 text-slate-450 hover:text-rose-400 p-1.5 px-2 rounded-lg transition-all"
