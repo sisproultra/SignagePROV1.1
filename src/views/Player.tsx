@@ -74,6 +74,7 @@ export default function Player() {
   const [activePlaylistId, setActivePlaylistId] = useState<string | null>(null);
   const [rawPlaylist, setRawPlaylist] = useState<any>(null);
   const [contentsMap, setContentsMap] = useState<Record<string, any>>({});
+  const [resolvedId, setResolvedId] = useState<string | null>(null);
   
   const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -140,12 +141,15 @@ export default function Player() {
 
           if (matchingDoc) {
             targetId = matchingDoc.id;
-            window.history.replaceState(null, '', `/screen/${targetId}`);
+            setResolvedId(targetId);
+            // No longer doing replaceState to keep the dynamic unique suffix in the URL bar
           } else {
             setError(`Error de Vinculación: El Nodo con ID [${cleanId}] no existe.`);
             setLoading(false);
             return;
           }
+        } else {
+          setResolvedId(cleanId);
         }
 
         // Suscribirse a los cambios de la pantalla para reaccionar a re-ordenamientos o cambios de playlist
@@ -323,7 +327,7 @@ export default function Player() {
     const logPlayback = async () => {
       try {
         await addDoc(collection(db, 'logs'), {
-          screenId: screenId || 'unknown',
+          screenId: resolvedId || screenId || 'unknown',
           contentId: currentItem.contentId,
           playlistId: activePlaylistId || 'direct',
           playedAt: new Date().toISOString(),
@@ -345,7 +349,7 @@ export default function Player() {
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-  }, [currentIndex, playlistItems, screenId, activePlaylistId]);
+  }, [currentIndex, playlistItems, resolvedId, screenId, activePlaylistId]);
 
   // Helper para extraer ID de YouTube
   const getYouTubeId = (url: string) => {
@@ -453,7 +457,7 @@ export default function Player() {
                 <div className="w-16 h-16 bg-rose-600 rounded-2xl flex items-center justify-center font-bold text-4xl text-white mx-auto mb-8 shadow-2xl shadow-rose-900/40">S</div>
                 <h3 className="text-slate-400 text-[10px] font-bold uppercase tracking-[0.5em] mb-3 italic">Estación Sincronizada</h3>
                 <p className="text-slate-500 text-[10px] font-mono uppercase tracking-[0.2em] mb-1 font-bold">{screen?.name || 'Cargando Nodo...'}</p>
-                <p className="text-slate-600 text-[8px] font-mono opacity-50">ID: {screenId}</p>
+                <p className="text-slate-600 text-[8px] font-mono opacity-50">ID: {resolvedId || screenId}</p>
                 
                 <div className="mt-8 space-y-4">
                   <div className="flex items-center justify-center gap-1.5">
