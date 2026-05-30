@@ -19,35 +19,26 @@ interface SignageMediaVideoProps {
  */
 function SignageMediaVideo({ url, name, isActive, loop, onEnded, onPlayStarted }: SignageMediaVideoProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
 
-    if (isActive) {
+    if (isActive && isReady) {
       console.log(`[SignagePlayer] Reproduciendo video activo: "${name}"`);
+      video.currentTime = 0;
       video.muted = true;
       video.playsInline = true;
       video.play()
-        .then(() => {
-          onPlayStarted();
-        })
-        .catch(err => {
-          console.warn("[SignagePlayer] Autoplay bloqueado o reproducción interrumpida:", err);
-        });
-    } else {
+        .then(() => onPlayStarted())
+        .catch(err => console.warn("[SignagePlayer] Autoplay bloqueado:", err));
+    } else if (!isActive) {
       console.log(`[SignagePlayer] Carga / Pausa en fondo de video: "${name}"`);
       video.pause();
-      // Retrasar el rebobinado a 0 para evitar que la transición de desvanecimiento (crossfade)
-      // muestre de repente el primer fotograma en lugar de quedarse congelado en el final/actual.
-      const timeout = setTimeout(() => {
-        if (!isActive && videoRef.current) {
-          videoRef.current.currentTime = 0;
-        }
-      }, 500);
-      return () => clearTimeout(timeout);
+      video.currentTime = 0;
     }
-  }, [isActive, url, name, onPlayStarted]);
+  }, [isActive, isReady, name, onPlayStarted]);
 
   return (
     <video
@@ -60,8 +51,8 @@ function SignageMediaVideo({ url, name, isActive, loop, onEnded, onPlayStarted }
       preload="auto"
       crossOrigin="anonymous"
       loop={loop}
+      onCanPlay={() => setIsReady(true)}  // ← Video listo para reproducir sin pausa
       onEnded={onEnded}
-      onPlaying={onPlayStarted}
       onError={(e) => {
         const videoElement = e.currentTarget;
         console.error('[SignagePlayer] Video error details:', {
@@ -544,7 +535,7 @@ export default function Player() {
              </div>
           </motion.div>
         ) : (
-          <div className="absolute inset-0 w-full h-full relative overflow-hidden">
+          <div className="absolute inset-0 w-full h-full bg-slate-950 overflow-hidden">
             {playlistItems.map((item: any, index: number) => {
               const isActive = index === currentIndex || index === visibleIndex;
               const isVisible = index === visibleIndex;
@@ -554,10 +545,10 @@ export default function Player() {
               return (
                 <div
                   key={item.id}
-                  className={`absolute inset-0 w-full h-full transition-all duration-300 ease-in-out ${
+                  className={`absolute inset-0 w-full h-full ${
                     isVisible 
-                      ? "opacity-100 pointer-events-auto z-10 scale-100 shadow-2xl" 
-                      : "opacity-0 pointer-events-none z-0 scale-98"
+                      ? "opacity-100 pointer-events-auto z-10" 
+                      : "opacity-0 pointer-events-none z-0"
                   }`}
                 >
                   {item.type === 'video' && ytId ? (
@@ -594,9 +585,12 @@ export default function Player() {
                       }}
                     />
                   ) : item.type === 'image' ? (
-                    <div 
-                      className="w-full h-full bg-center bg-cover bg-no-repeat"
-                      style={{ backgroundImage: `url(${directUrl})` }}
+                    <img
+                      src={directUrl}
+                      alt={item.name}
+                      className="w-full h-full object-cover"
+                      loading="eager"
+                      decoding="async"
                     />
                   ) : item.type === 'text' ? (
                     <div className="w-full h-full flex flex-col items-center justify-center bg-slate-950 p-24 text-center relative overflow-hidden">
