@@ -1030,6 +1030,27 @@ class MockUploadTask {
           totalBytes: this.file.size
         });
 
+        // Try programmatically to create/update the bucket with an expanded size limit of 500MB (524288000 bytes)
+        try {
+          await supabase.storage.createBucket('signage-contents', {
+            public: true,
+            file_size_limit: 524288000,
+            allowed_mime_types: ['image/*', 'video/*']
+          });
+          console.log("🚀 Supabase Storage bucket 'signage-contents' created programmatically with 500MB limit!");
+        } catch (createErr) {
+          try {
+            await supabase.storage.updateBucket('signage-contents', {
+              public: true,
+              file_size_limit: 524288000,
+              allowed_mime_types: ['image/*', 'video/*']
+            });
+            console.log("🚀 Supabase Storage bucket 'signage-contents' updated successfully to 500MB limit!");
+          } catch (updateErr) {
+            console.warn("[Supabase Storage] No se pudo crear/actualizar el límite del bucket desde el cliente (es normal si la anon key carece de permisos de admin):", updateErr);
+          }
+        }
+
         const { data, error } = await supabase.storage
           .from('signage-contents')
           .upload(cleanFilename, this.file, {

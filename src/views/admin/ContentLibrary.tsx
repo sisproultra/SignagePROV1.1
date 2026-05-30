@@ -298,7 +298,29 @@ export default function ContentLibrary() {
       }, 
       (error) => {
         console.error("Upload error:", error);
-        alert("Error al subir el archivo a Supabase Storage. Verifica tu conexión y que el bucket 'signage-contents' esté configurado correctamente con políticas públicas de inserción.");
+        const errorMsg = error?.message || (typeof error === 'string' ? error : '') || '';
+        const isSizeError = errorMsg.toLowerCase().includes('exceeded') || 
+                            errorMsg.toLowerCase().includes('size') || 
+                            errorMsg.toLowerCase().includes('limit');
+
+        if (isSizeError) {
+          alert(
+            "⚠️ ¡EL ARCHIVO EXCEDE EL LÍMITE DE TAMAÑO DE SUPABASE STORAGE!\n\n" +
+            "Para poder subir videos grandes (hasta 200MB - 500MB), debes actualizar el límite de tamaño de archivo de tu Bucket 'signage-contents' en tu panel de Supabase:\n\n" +
+            "OPCIÓN A: Desde el panel visual de Supabase:\n" +
+            "1. Entra a tu proyecto en Supabase.\n" +
+            "2. Ve a la pestaña 'Storage' (Almacenamiento) en la barra de navegación izquierda.\n" +
+            "3. Busca tu bucket de almacenamiento llamado 'signage-contents'.\n" +
+            "4. Haz clic en los tres puntos (...) al lado de 'signage-contents' y selecciona 'Edit bucket'.\n" +
+            "5. Cambia el campo 'Maximum File Size' a 500 MB (o desactiva el límite).\n" +
+            "6. ¡Listo! Intenta subir el video de nuevo.\n\n" +
+            "OPCIÓN B: Desde la consola SQL de Supabase:\n" +
+            "Ejecuta la siguiente línea en tu SQL Editor para actualizarlo al instante:\n" +
+            "update storage.buckets set file_size_limit = 524288000 where id = 'signage-contents';"
+          );
+        } else {
+          alert("Error al subir el archivo a Supabase Storage. Verifica tu conexión y que el bucket 'signage-contents' esté configurado correctamente con políticas públicas de inserción.\n\nDetalle: " + errorMsg);
+        }
         setUploading(false);
       }, 
       async () => {
