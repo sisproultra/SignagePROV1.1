@@ -21,9 +21,14 @@ function SignageMediaVideo({ url, name, isActive, loop, onEnded, onPlayStarted }
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isReady, setIsReady] = useState(false);
 
-  // Resetear isReady al cambiar la URL del video
+  // Resetear isReady al cambiar la URL del video o iniciar si ya cargó
   useEffect(() => {
-    setIsReady(false);
+    const video = videoRef.current;
+    if (video && video.readyState >= 2) {
+      setIsReady(true);
+    } else {
+      setIsReady(false);
+    }
   }, [url]);
 
   useEffect(() => {
@@ -31,17 +36,21 @@ function SignageMediaVideo({ url, name, isActive, loop, onEnded, onPlayStarted }
     if (!video) return;
 
     if (isActive && isReady) {
-      console.log(`[SignagePlayer] Reproduciendo video activo: "${name}"`);
-      video.currentTime = 0;
-      video.muted = true;
-      video.playsInline = true;
-      video.play()
-        .then(() => onPlayStarted())
-        .catch(err => console.warn("[SignagePlayer] Autoplay bloqueado:", err));
+      if (video.paused || video.ended) {
+        console.log(`[SignagePlayer] Reproduciendo video activo: "${name}"`);
+        video.currentTime = 0;
+        video.muted = true;
+        video.playsInline = true;
+        video.play()
+          .then(() => onPlayStarted())
+          .catch(err => console.warn("[SignagePlayer] Autoplay bloqueado o interrumpido:", err));
+      }
     } else if (!isActive) {
-      console.log(`[SignagePlayer] Carga / Pausa en fondo de video: "${name}"`);
-      video.pause();
-      video.currentTime = 0;
+      if (!video.paused || video.currentTime !== 0) {
+        console.log(`[SignagePlayer] Carga / Pausa en fondo de video: "${name}"`);
+        video.pause();
+        video.currentTime = 0;
+      }
     }
   }, [isActive, isReady, name, onPlayStarted]);
 
