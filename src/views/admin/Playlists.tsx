@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { db, collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc, updateDoc } from '../../lib/supabase';
-import { ListMusic, Plus, Trash2, GripVertical, Clock, Film, Image as ImageIcon, Type, Save, Edit2 } from 'lucide-react';
+import { ListMusic, Plus, Trash2, GripVertical, Clock, Film, Image as ImageIcon, Type, Save, Edit2, Music } from 'lucide-react';
 
 export default function Playlists() {
   const [playlists, setPlaylists] = useState<any[]>([]);
@@ -10,7 +10,8 @@ export default function Playlists() {
   const [playlistToEdit, setPlaylistToEdit] = useState<any>(null);
   const [newPlaylist, setNewPlaylist] = useState({
     name: '',
-    items: [] as any[]
+    items: [] as any[],
+    bgAudioUrl: ''
   });
 
   useEffect(() => {
@@ -29,24 +30,29 @@ export default function Playlists() {
     
     if (playlistToEdit) {
       await updateDoc(doc(db, 'playlists', playlistToEdit.id), {
-        ...newPlaylist
+        name: newPlaylist.name,
+        items: newPlaylist.items,
+        bgAudioUrl: newPlaylist.bgAudioUrl || ''
       });
     } else {
       await addDoc(collection(db, 'playlists'), {
-        ...newPlaylist,
+        name: newPlaylist.name,
+        items: newPlaylist.items,
+        bgAudioUrl: newPlaylist.bgAudioUrl || '',
         createdAt: new Date().toISOString()
       });
     }
     setIsModalOpen(false);
     setPlaylistToEdit(null);
-    setNewPlaylist({ name: '', items: [] });
+    setNewPlaylist({ name: '', items: [], bgAudioUrl: '' });
   };
 
   const openEdit = (playlist: any) => {
     setPlaylistToEdit(playlist);
     setNewPlaylist({
       name: playlist.name,
-      items: playlist.items
+      items: playlist.items,
+      bgAudioUrl: playlist.bgAudioUrl || ''
     });
     setIsModalOpen(true);
   };
@@ -81,7 +87,11 @@ export default function Playlists() {
           <p className="text-slate-400">Diseñando secuencias de marca.</p>
         </div>
         <button 
-          onClick={() => setIsModalOpen(true)}
+          onClick={() => {
+            setPlaylistToEdit(null);
+            setNewPlaylist({ name: '', items: [], bgAudioUrl: '' });
+            setIsModalOpen(true);
+          }}
           className="bg-rose-600 text-white px-5 py-2.5 rounded-xl font-bold flex items-center gap-2 hover:bg-rose-500 transition-all shadow-lg shadow-rose-900/20"
         >
           <Plus className="w-5 h-5" />
@@ -97,6 +107,11 @@ export default function Playlists() {
               <div>
                 <h3 className="font-bold text-lg text-white">{playlist.name}</h3>
                 <p className="text-[10px] text-slate-500 uppercase font-bold tracking-widest">{playlist.items.length} clips • {playlist.items.reduce((acc: number, item: any) => acc + item.duration, 0)}s DURACIÓN</p>
+                {playlist.bgAudioUrl && (
+                  <p className="text-[9px] text-rose-500 font-bold uppercase tracking-wider flex items-center gap-1 mt-1 font-sans">
+                    <Music className="w-3 h-3 text-rose-500" /> Música en fondo activa
+                  </p>
+                )}
               </div>
               <div className="flex gap-1">
                 <button 
@@ -152,10 +167,10 @@ export default function Playlists() {
               <div className="w-full md:w-5/12 p-8 overflow-y-auto border-r border-white/5 bg-slate-950/30 custom-scrollbar">
                 <div className="mb-6 flex items-center justify-between">
                   <h4 className="text-[10px] font-bold uppercase text-slate-500 tracking-[0.2em] italic">Media Nodes</h4>
-                  <span className="text-[10px] font-mono text-slate-600 uppercase">Available: {contents.length}</span>
+                  <span className="text-[10px] font-mono text-slate-600 uppercase">Available: {contents.filter(c => c.type !== 'audio').length}</span>
                 </div>
                 <div className="space-y-2">
-                  {contents.map(content => (
+                  {contents.filter(c => c.type !== 'audio').map(content => (
                     <button
                       key={content.id}
                       onClick={() => addItem(content.id)}
@@ -176,7 +191,7 @@ export default function Playlists() {
 
               {/* Right: Sequence */}
               <div className="w-full md:w-7/12 p-8 flex flex-col bg-slate-900">
-                <div className="mb-8">
+                <div className="mb-6">
                   <label className="text-[10px] font-bold uppercase text-slate-500 mb-2 block tracking-widest italic">Playlist ID / Name</label>
                   <input 
                     required
@@ -185,6 +200,25 @@ export default function Playlists() {
                     onChange={e => setNewPlaylist({...newPlaylist, name: e.target.value})}
                     placeholder="Ej: Lanzamiento Tienda Sur"
                   />
+                </div>
+
+                <div className="mb-8">
+                  <label className="text-[10px] font-bold uppercase text-slate-500 mb-2 block tracking-widest italic flex items-center gap-1.5">
+                    <Music className="w-3.5 h-3.5 text-rose-500" />
+                    Música de Fondo en Bucle (Opcional)
+                  </label>
+                  <select 
+                    className="w-full bg-slate-950/50 text-white px-5 py-3.5 rounded-2xl border border-white/5 focus:outline-none focus:ring-2 focus:ring-rose-500/55 transition-all font-sans text-xs tracking-wide text-slate-300"
+                    value={newPlaylist.bgAudioUrl}
+                    onChange={e => setNewPlaylist({...newPlaylist, bgAudioUrl: e.target.value})}
+                  >
+                    <option value="" className="bg-slate-900">🔇 Sin Música de Fondo (Loops mudos)</option>
+                    {contents.filter(c => c.type === 'audio').map(c => (
+                      <option key={c.id} value={c.url} className="bg-slate-900">
+                        🎵 {c.name}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 <div className="flex-1 flex flex-col overflow-hidden">

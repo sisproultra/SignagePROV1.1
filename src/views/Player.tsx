@@ -8,73 +8,72 @@ interface SignageMediaVideoProps {
   url: string;
   name: string;
   isActive: boolean;
+  isNext: boolean;      // ← NUEVO: es el siguiente en la cola
   loop: boolean;
   onEnded: () => void;
   onPlayStarted: () => void;
+  onNextReady?: () => void; // ← NUEVO: callback cuando el siguiente está listo
 }
 
 /**
  * Custom player component that preloads the video and controls playback strictly
  * when the item becomes active or inactive. Keeps current position at 0 when waiting.
  */
-function SignageMediaVideo({ url, name, isActive, loop, onEnded, onPlayStarted }: SignageMediaVideoProps) {
+function SignageMediaVideo({ url, name, isActive, isNext, loop, onEnded, onPlayStarted, onNextReady }: SignageMediaVideoProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isReady, setIsReady] = useState(false);
 
-  // Resetear isReady al cambiar la URL del video o iniciar si ya cargó
+  // Reset isReady cuando cambia la URL
   useEffect(() => {
-    const video = videoRef.current;
-    if (video && video.readyState >= 2) {
-      setIsReady(true);
-    } else {
-      setIsReady(false);
-    }
+    setIsReady(false);
   }, [url]);
 
+  // Control de reproducción
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
 
     if (isActive && isReady) {
-      if (video.paused || video.ended) {
-        console.log(`[SignagePlayer] Reproduciendo video activo: "${name}"`);
-        video.currentTime = 0;
-        video.muted = true;
-        video.playsInline = true;
-        video.play()
-          .then(() => onPlayStarted())
-          .catch(err => console.warn("[SignagePlayer] Autoplay bloqueado o interrumpido:", err));
-      }
-    } else if (!isActive) {
-      if (!video.paused || video.currentTime !== 0) {
-        console.log(`[SignagePlayer] Carga / Pausa en fondo de video: "${name}"`);
-        video.pause();
-        video.currentTime = 0;
-      }
+      video.currentTime = 0;
+      video.muted = true;
+      video.playsInline = true;
+      video.play()
+        .then(() => onPlayStarted())
+        .catch(err => console.warn("[SignagePlayer] Autoplay bloqueado:", err));
+    } else if (!isActive && !isNext) {
+      // Solo pausar si no es activo NI siguiente (ahorrar recursos)
+      video.pause();
+      video.currentTime = 0;
     }
-  }, [isActive, isReady, name, onPlayStarted]);
+    // Si isNext: no hacer nada, dejar que el browser cargue en background
+  }, [isActive, isNext, isReady]);
 
   return (
     <video
       ref={videoRef}
       src={url}
-      className="w-full h-full object-contain bg-slate-950"
+      className="w-full h-full object-cover bg-slate-950"
       muted
       playsInline
       controls={false}
-      preload="auto"
+      preload="auto"           // ← Carga agresiva en background
       crossOrigin="anonymous"
       loop={loop}
-      onCanPlay={() => setIsReady(true)}  // ← Video listo para reproducir sin pausa
+      onCanPlay={() => {
+        setIsReady(true);
+        // Si soy el siguiente, notificar que estoy listo
+        if (isNext && onNextReady) {
+          onNextReady();
+        }
+      }}
       onEnded={onEnded}
       onError={(e) => {
         const videoElement = e.currentTarget;
-        console.error('[SignagePlayer] Video error details:', {
+        console.error('[SignagePlayer] Video error:', {
           code: videoElement.error?.code,
           message: videoElement.error?.message,
           src: url
         });
-        // Si hay una falla de codificación, gatillamos onEnded para no colgar la pantalla
         setTimeout(onEnded, 2000);
       }}
     />
@@ -96,6 +95,29 @@ export default function Player() {
   const [retryCount, setRetryCount] = useState(0);
   
   const timerRef = useRef<any>(null);
+  const bgAudioRef = useRef<HTMLAudioElement>(null);
+
+  const bgAudioUrlToPlay = useMemo(() => {
+    if (screen?.items && screen.items.length > 0) {
+      return screen.bgAudioUrl || "";
+    }
+    return rawPlaylist?.bgAudioUrl || "";
+  }, [screen?.items, screen?.bgAudioUrl, rawPlaylist?.bgAudioUrl]);
+
+  useEffect(() => {
+    const audioObj = bgAudioRef.current;
+    if (!audioObj) return;
+
+    if (playbackStarted && bgAudioUrlToPlay) {
+      console.log(`[Player] Iniciando música de fondo en bucle: ${bgAudioUrlToPlay}`);
+      audioObj.volume = 0.5; // Música de fondo agradable al 50% de volumen para no saturar
+      audioObj.play().catch(err => {
+        console.warn("[Player] Fallo al reproducir audio de fondo, re-intentando al hacer click:", err);
+      });
+    } else {
+      audioObj.pause();
+    }
+  }, [playbackStarted, bgAudioUrlToPlay]);
 
   // Escuchar el evento 'supabase-ready' para re-iniciar la conexión si 
   // Supabase se configura dinámicamente después del primer render
@@ -362,6 +384,25 @@ export default function Player() {
     }
   }, [playlistItems, currentIndex]);
 
+  // Precargar la siguiente imagen para evitar flash negro en TV
+  useEffect(() => {
+    if (playlistItems.length <= 1) return;
+    const nextIndex = (currentIndex + 1) % playlistItems.length;
+    const nextItem = playlistItems[nextIndex];
+    
+    if (nextItem?.type === 'image' && nextItem?.url) {
+      const link = document.createElement('link');
+      link.rel = 'preload';
+      link.as = 'image';
+      link.href = getDirectUrl(nextItem.url);
+      document.head.appendChild(link);
+      
+      return () => {
+        document.head.removeChild(link);
+      };
+    }
+  }, [currentIndex, playlistItems]);
+
   // 6. CONTROLADOR DE TEMPORIZACIÓN CLÁSICA (Failsafe para transiciones automáticas)
   useEffect(() => {
     if (playlistItems.length <= 1) {
@@ -469,7 +510,7 @@ export default function Player() {
 
   return (
     <div 
-      className="h-screen bg-slate-950 overflow-hidden relative cursor-none"
+      className="h-screen w-screen bg-slate-950 overflow-hidden relative cursor-none p-0 m-0"
       onClick={() => {
         if (!playbackStarted) {
           setPlaybackStarted(true);
@@ -526,81 +567,87 @@ export default function Player() {
           </motion.div>
         ) : (
           <div className="absolute inset-0 w-full h-full bg-slate-950 overflow-hidden">
-            {playlistItems.map((item: any, index: number) => {
-              const isActive = index === currentIndex;
-              const directUrl = getDirectUrl(item.url);
-              const ytId = getYouTubeId(item.url);
+            {(() => {
+              const nextIndex = (currentIndex + 1) % playlistItems.length;
+              return playlistItems.map((item: any, index: number) => {
+                const isActive = index === currentIndex;
+                const isNext = index === nextIndex && playlistItems.length > 1;
+                const directUrl = getDirectUrl(item.url);
+                const ytId = getYouTubeId(item.url);
 
-              return (
-                <div
-                  key={item.id}
-                  className={`absolute inset-0 w-full h-full ${
-                    isActive 
-                      ? "opacity-100 pointer-events-auto z-10" 
-                      : "opacity-0 pointer-events-none z-0"
-                  }`}
-                >
-                  {item.type === 'video' && ytId ? (
-                    <div className="w-full h-full bg-slate-950 flex items-center justify-center relative overflow-hidden">
-                      <iframe
-                        title={item.name}
-                        src={`https://www.youtube.com/embed/${ytId}?autoplay=${isActive ? 1 : 0}&mute=1&controls=0&loop=1&playlist=${ytId}&playsinline=1&showinfo=0&rel=0&iv_load_policy=3&disablekb=1&enablejsapi=1`}
-                        className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 border-0 pointer-events-none shadow-2xl"
-                        style={{
-                          width: '100vw',
-                          height: '56.25vw', /* 16:9 ratio */
-                          minHeight: '100vh',
-                          minWidth: '177.77vh', /* 16:9 ratio */
+                return (
+                  <div
+                    key={item.id}
+                    className={`absolute inset-0 w-full h-full ${
+                      isActive 
+                        ? "opacity-100 pointer-events-auto z-10" 
+                        : "opacity-0 pointer-events-none z-0"
+                    }`}
+                  >
+                    {item.type === 'video' && ytId ? (
+                      <div className="w-full h-full bg-slate-950 flex items-center justify-center relative overflow-hidden">
+                        <iframe
+                          title={item.name}
+                          src={`https://www.youtube.com/embed/${ytId}?autoplay=${isActive ? 1 : 0}&mute=1&controls=0&loop=1&playlist=${ytId}&playsinline=1&showinfo=0&rel=0&iv_load_policy=3&disablekb=1&enablejsapi=1`}
+                          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 border-0 pointer-events-none shadow-2xl"
+                          style={{
+                            width: '100vw',
+                            height: '56.25vw', /* 16:9 ratio */
+                            minHeight: '100vh',
+                            minWidth: '177.77vh', /* 16:9 ratio */
+                          }}
+                          allow="autoplay; encrypted-media"
+                          allowFullScreen
+                        />
+                      </div>
+                    ) : item.type === 'video' ? (
+                      <SignageMediaVideo
+                        url={directUrl}
+                        name={item.name}
+                        isActive={isActive}
+                        isNext={isNext}
+                        loop={playlistItems.length === 1}
+                        onPlayStarted={() => {
+                          setPlaybackStarted(true);
                         }}
-                        allow="autoplay; encrypted-media"
-                        allowFullScreen
+                        onNextReady={() => console.log(`[Player] Video siguiente pre-buffereado: "${playlistItems[nextIndex]?.name}"`)}
+                        onEnded={() => {
+                          console.log('[Player] Final natural de clip alcanzado:', item.name);
+                          if (playlistItems.length > 1) {
+                            setCurrentIndex((prev) => (prev + 1) % playlistItems.length);
+                          }
+                        }}
                       />
-                    </div>
-                  ) : item.type === 'video' ? (
-                    <SignageMediaVideo
-                      url={directUrl}
-                      name={item.name}
-                      isActive={isActive}
-                      loop={playlistItems.length === 1}
-                      onPlayStarted={() => {
-                        setPlaybackStarted(true);
-                      }}
-                      onEnded={() => {
-                        console.log('[Player] Final natural de clip alcanzado:', item.name);
-                        if (playlistItems.length > 1) {
-                          setCurrentIndex((prev) => (prev + 1) % playlistItems.length);
-                        }
-                      }}
-                    />
-                  ) : item.type === 'image' ? (
-                    <img
-                      src={directUrl}
-                      alt={item.name}
-                      className="w-full h-full object-cover"
-                      loading="eager"
-                      decoding="async"
-                    />
-                  ) : item.type === 'text' ? (
-                    <div className="w-full h-full flex flex-col items-center justify-center bg-slate-950 p-24 text-center relative overflow-hidden">
-                       <div className="atmosphere absolute inset-0 pointer-events-none opacity-40" />
-                       <motion.div
-                         initial={{ opacity: 0, scale: 0.9 }}
-                         animate={{ opacity: isActive ? 1 : 0, scale: isActive ? 1 : 0.9 }}
-                         className="relative z-10"
-                       >
-                         <h2 className="text-white text-6xl md:text-9xl font-bold tracking-tighter max-w-6xl leading-[0.85] mb-12 drop-shadow-2xl">
-                           {item.name}
-                         </h2>
-                         <div className="h-1 bg-rose-600 w-24 mx-auto mb-12 rounded-full shadow-[0_0_20px_#e11d48]"></div>
-                         <p className="text-slate-400 text-2xl md:text-4xl font-mono leading-relaxed max-w-3xl mx-auto italic opacity-80 font-medium font-sans">
-                           {item.url}
-                         </p>
-                       </motion.div>
-                    </div>
-                  ) : null}
-                </div>
-              );
-            })}
+                    ) : item.type === 'image' ? (
+                      <img
+                        src={directUrl}
+                        alt={item.name}
+                        className="w-full h-full object-cover"
+                        loading="eager"
+                        decoding="sync"
+                      />
+                    ) : item.type === 'text' ? (
+                      <div className="w-full h-full flex flex-col items-center justify-center bg-slate-950 p-24 text-center relative overflow-hidden">
+                         <div className="atmosphere absolute inset-0 pointer-events-none opacity-40" />
+                         <motion.div
+                           initial={{ opacity: 0, scale: 0.9 }}
+                           animate={{ opacity: isActive ? 1 : 0, scale: isActive ? 1 : 0.9 }}
+                           className="relative z-10"
+                         >
+                           <h2 className="text-white text-6xl md:text-9xl font-bold tracking-tighter max-w-6xl leading-[0.85] mb-12 drop-shadow-2xl">
+                             {item.name}
+                           </h2>
+                           <div className="h-1 bg-rose-600 w-24 mx-auto mb-12 rounded-full shadow-[0_0_20px_#e11d48]"></div>
+                           <p className="text-slate-400 text-2xl md:text-4xl font-mono leading-relaxed max-w-3xl mx-auto italic opacity-80 font-medium font-sans">
+                             {item.url}
+                           </p>
+                         </motion.div>
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              });
+            })()}
           </div>
         )}
       </AnimatePresence>
@@ -613,6 +660,14 @@ export default function Player() {
           <span className="text-[10px] text-slate-500 font-mono">/ RED SÍCRONA</span>
         </div>
       </div>
+
+      {/* Hidden audio player for looping background music */}
+      <audio 
+        ref={bgAudioRef} 
+        src={bgAudioUrlToPlay} 
+        loop 
+        style={{ display: 'none' }} 
+      />
     </div>
   );
 }

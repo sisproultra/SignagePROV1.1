@@ -8,7 +8,7 @@ import {
   Film, Image as ImageIcon, Type, Plus, Trash2, ExternalLink, 
   Play, Clock, UploadCloud, Loader2, CheckCircle2, Edit2,
   Server, HelpCircle, ArrowRight, Code, Key, Settings, Terminal, Info, Copy,
-  RefreshCw
+  RefreshCw, Music
 } from 'lucide-react';
 
 export default function ContentLibrary() {
@@ -166,16 +166,16 @@ export default function ContentLibrary() {
   const [contentToEdit, setContentToEdit] = useState<any>(null);
   const [newContent, setNewContent] = useState({
     name: '',
-    type: 'video' as 'video' | 'image' | 'text',
+    type: 'video' as 'video' | 'image' | 'audio' | 'text',
     url: '',
     duration: 15,
   });
 
   const [syncing, setSyncing] = useState(false);
 
-  const syncFromSupabaseStorage = async () => {
+  const syncFromSupabaseStorage = async (silent: boolean = false) => {
     if (!supabase) {
-      setIsSupaModalOpen(true);
+      if (!silent) setIsSupaModalOpen(true);
       return;
     }
 
@@ -189,18 +189,27 @@ export default function ContentLibrary() {
 
       if (error) {
         console.error("Error al listar archivos de Supabase Storage:", error);
-        alert(`Error de Conexión a Supabase Storage: ${error.message}`);
+        if (!silent) alert(`Error de Conexión a Supabase Storage: ${error.message}`);
         return;
       }
 
       if (!files || files.length === 0) {
-        alert("No se encontraron archivos cargados en el bucket 'signage-contents' de tu Supabase Storage.");
+        if (!silent) alert("No se encontraron archivos cargados en el bucket 'signage-contents' de tu Supabase Storage.");
         return;
       }
 
+      // Fetch existing records from Supabase directly to guarantee latest data instead of waiting for async onSnapshot to propagate
+      let currentDbContents: any[] = [];
+      const { data: selectData, error: selectError } = await supabase.from('contents').select('url, name');
+      if (!selectError && selectData) {
+        currentDbContents = selectData;
+      } else {
+        currentDbContents = contents;
+      }
+
       // Convert existing media files in db to set for ultra-fast check (preventing duplicates)
-      const existingUrls = new Set(contents.map(c => c.url.toLowerCase()));
-      const existingNames = new Set(contents.map(c => c.name.toLowerCase()));
+      const existingUrls = new Set(currentDbContents.map((c: any) => (c.url || '').toLowerCase()));
+      const existingNames = new Set(currentDbContents.map((c: any) => (c.name || '').toLowerCase()));
 
       let importedCount = 0;
 
@@ -227,17 +236,18 @@ export default function ContentLibrary() {
         const lowerName = file.name.toLowerCase();
         const isVideo = lowerName.endsWith('.mp4') || lowerName.endsWith('.webm') || lowerName.endsWith('.mov') || lowerName.endsWith('.m4v') || lowerName.endsWith('.avi');
         const isImage = lowerName.endsWith('.png') || lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg') || lowerName.endsWith('.gif') || lowerName.endsWith('.webp');
+        const isAudio = lowerName.endsWith('.mp3') || lowerName.endsWith('.wav') || lowerName.endsWith('.m4a') || lowerName.endsWith('.ogg');
 
-        if (!isVideo && !isImage) continue; // Only process media
+        if (!isVideo && !isImage && !isAudio) continue; // Only process media
         
-        const fileType = isVideo ? 'video' : 'image';
+        const fileType = isVideo ? 'video' : isImage ? 'image' : 'audio';
 
         // Add document to 'contents' Firestore-Supabase collection
         await addDoc(collection(db, 'contents'), {
           name: nameWithoutExt,
           type: fileType,
           url: publicUrl,
-          duration: fileType === 'video' ? 15 : 10,
+          duration: fileType === 'video' ? 15 : fileType === 'audio' ? 5 : 10,
           createdAt: new Date().toISOString()
         });
 
@@ -245,14 +255,14 @@ export default function ContentLibrary() {
       }
 
       if (importedCount > 0) {
-        alert(`🎉 ¡Sincronización Exitosa! Se revisó el storage y se agregaron ${importedCount} videos/imágenes nuevos que ya estaban en tu bucket 'signage-contents'.`);
+        if (!silent) alert(`🎉 ¡Sincronización Exitosa! Se revisó el storage y se agregaron ${importedCount} recursos nuevos (videos, imágenes o audios) que ya estaban en tu bucket 'signage-contents'.`);
       } else {
-        alert(`💡 Tu Biblioteca está al día. Los ${files.length} archivos subidos al bucket 'signage-contents' ya se encuentran visibles.`);
+        if (!silent) alert(`💡 Tu Biblioteca está al día. Los ${files.length} archivos subidos al bucket 'signage-contents' ya se encuentran visibles.`);
       }
 
     } catch (err: any) {
       console.error("Critical storage synchronization error:", err);
-      alert(`Error crítico al escanear storage: ${err.message || err}`);
+      if (!silent) alert(`Error crítico al escanear storage: ${err.message || err}`);
     } finally {
       setSyncing(false);
     }
@@ -268,18 +278,31 @@ export default function ContentLibrary() {
     return () => unsub();
   }, []);
 
+  // Silent sync on initial load
+  useEffect(() => {
+    if (supabase) {
+      const timer = setTimeout(() => {
+        syncFromSupabaseStorage(true);
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [hasSupaClient]);
+
   const processUploadedFile = (file: File) => {
     // Detect type based on file or webm extension
     const isVideo = file.type.startsWith('video/') || file.name.toLowerCase().endsWith('.webm');
     const isImage = file.type.startsWith('image/');
+    const isAudio = file.type.startsWith('audio/') || file.name.toLowerCase().endsWith('.mp3') || file.name.toLowerCase().endsWith('.wav') || file.name.toLowerCase().endsWith('.m4a');
     
-    let type: 'video' | 'image' = 'video';
+    let type: 'video' | 'image' | 'audio' | 'text' = 'video';
     if (isImage) {
       type = 'image';
     } else if (isVideo) {
       type = 'video';
+    } else if (isAudio) {
+      type = 'audio';
     } else {
-      alert('Por favor sube solo videos (MP4, WEBM) o imágenes (JPG, JPEG, PNG, GIF).');
+      alert('Por favor sube solo videos (MP4, WEBM), imágenes (JPG, JPEG, PNG, GIF) o audios (MP3, WAV, M4A).');
       return;
     }
 
@@ -492,7 +515,7 @@ export default function ContentLibrary() {
         <>
           {/* Filters */}
           <div className="flex gap-2 bg-slate-900 p-2 rounded-2xl border border-slate-800 w-fit">
-            {['all', 'video', 'image', 'text'].map((type) => (
+            {['all', 'video', 'image', 'audio', 'text'].map((type) => (
               <button
                 key={type}
                 onClick={() => setFilter(type)}
@@ -501,7 +524,7 @@ export default function ContentLibrary() {
                   ${filter === type ? 'bg-rose-600 text-white' : 'text-slate-400 hover:bg-slate-800'}
                 `}
               >
-                {type === 'all' ? 'Todos' : type === 'video' ? 'Videos' : type === 'image' ? 'Imágenes' : 'Texto'}
+                {type === 'all' ? 'Todos' : type === 'video' ? 'Videos' : type === 'image' ? 'Imágenes' : type === 'audio' ? 'Audios' : 'Texto'}
               </button>
             ))}
           </div>
@@ -555,6 +578,16 @@ export default function ContentLibrary() {
                         </div>
                       );
                     })()
+                  ) : content.type === 'audio' ? (
+                    <div className="p-6 text-center w-full h-full flex flex-col items-center justify-center bg-slate-950">
+                      <Music className="w-10 h-10 text-rose-500 mb-2 animate-pulse" />
+                      <audio 
+                        src={content.url} 
+                        controls 
+                        className="w-full h-8 max-w-[200px]" 
+                        preload="none"
+                      />
+                    </div>
                   ) : (
                     <div className="p-6 text-center">
                       <Type className="w-10 h-10 text-slate-700 mx-auto mb-3 opacity-30" />
@@ -562,7 +595,7 @@ export default function ContentLibrary() {
                     </div>
                   )}
                   <div className="absolute top-3 left-3 bg-slate-900/80 backdrop-blur text-white p-2 rounded-xl border border-white/5 italic">
-                    {content.type === 'video' ? <Film className="w-3.5 h-3.5" /> : content.type === 'image' ? <ImageIcon className="w-3.5 h-3.5" /> : <Type className="w-3.5 h-3.5" />}
+                    {content.type === 'video' ? <Film className="w-3.5 h-3.5" /> : content.type === 'image' ? <ImageIcon className="w-3.5 h-3.5" /> : content.type === 'audio' ? <Music className="w-3.5 h-3.5 text-rose-500" /> : <Type className="w-3.5 h-3.5" />}
                   </div>
                 </div>
                 
@@ -1083,7 +1116,7 @@ serve(async (req) => {
                       type="file" 
                       ref={fileInputRef} 
                       className="hidden" 
-                      accept="video/mp4,video/webm,video/quicktime,video/*,image/*"
+                      accept="video/mp4,video/webm,video/quicktime,video/*,image/*,audio/mp3,audio/mpeg,audio/*"
                       onChange={handleFileUpload}
                     />
                     
@@ -1147,16 +1180,16 @@ serve(async (req) => {
                           <UploadCloud className="w-8 h-8 text-slate-400 group-hover:text-rose-500 transition-colors" />
                         </div>
                         <div>
-                          <p className="text-sm font-bold text-slate-200">Arrastra o selecciona un archivo</p>
+                          <p className="text-sm font-bold text-slate-200">Arrastra o selecciona un archivo (Video, Imagen o MP3)</p>
                           <p className="text-[10px] text-slate-500 mt-1 max-w-[280px] leading-normal">
-                            Los videos se guardan de forma automática en tu bucket de <strong className="text-rose-450/90 font-black">Supabase</strong>.
+                            Los archivos se guardan de forma automática en tu bucket de <strong className="text-rose-450/90 font-black">Supabase</strong>.
                           </p>
                         </div>
                         
                         {/* Format Pills */}
                         <div className="flex flex-wrap justify-center gap-1.5 pt-2">
                           <span className="text-[8px] font-extrabold font-mono uppercase bg-slate-950 text-slate-400 px-2 py-0.5 rounded border border-white/5 transition-all hover:border-rose-500/25">WEBM Soportado</span>
-                          <span className="text-[8px] font-extrabold font-mono uppercase bg-slate-950 text-slate-400 px-2 py-0.5 rounded border border-white/5 transition-all hover:border-rose-500/25">MP4 HD</span>
+                          <span className="text-[8px] font-extrabold font-mono uppercase bg-slate-950 text-slate-400 px-2 py-0.5 rounded border border-white/5 transition-all hover:border-rose-500/25">MP4/MP3</span>
                           <span className="text-[8px] font-extrabold font-mono uppercase bg-slate-950 text-slate-300 px-2 py-0.5 rounded border border-emerald-500/20 transition-all hover:border-rose-500/25">Sincronía Auto</span>
                         </div>
                       </div>
@@ -1188,8 +1221,8 @@ serve(async (req) => {
               {/* 2. Format Button Selector */}
               <div>
                 <label className="text-[10px] font-bold uppercase text-slate-500 mb-2 block tracking-widest">Formato</label>
-                <div className="grid grid-cols-3 gap-2">
-                  {['video', 'image', 'text'].map(t => (
+                <div className="grid grid-cols-4 gap-2">
+                  {['video', 'image', 'audio', 'text'].map(t => (
                     <button
                       key={t}
                       type="button"

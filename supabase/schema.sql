@@ -48,6 +48,7 @@ CREATE TABLE IF NOT EXISTS public.playlists (
     id text PRIMARY KEY DEFAULT gen_random_uuid()::text,
     name text NOT NULL,
     items jsonb NOT NULL DEFAULT '[]'::jsonb, -- Almacena array con { contentId, name, type, duration }
+    bg_audio_url text, -- URL de música de fondo (MP3) opcional para reproducir en bucle
     created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
@@ -63,6 +64,7 @@ CREATE TABLE IF NOT EXISTS public.screens (
     last_seen timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
     current_playlist_id text REFERENCES public.playlists(id) ON DELETE SET NULL,
     items jsonb DEFAULT '[]'::jsonb, -- Items de playlist directa exclusivos del nodo
+    bg_audio_url text, -- URL de música de fondo directa opcional
     created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
@@ -144,10 +146,12 @@ CREATE POLICY "Permitir insert público" ON public.logs FOR INSERT WITH CHECK (t
 -- CONFIGURACIÓN DE SUPABASE STORAGE (BUCKETS)
 -- ====================================================================
 
--- 1. Crear el bucket 'signage-contents' de forma pública para reproducir videos en bucle sin redirecciones complejas
-INSERT INTO storage.buckets (id, name, public) 
-VALUES ('signage-contents', 'signage-contents', true)
-ON CONFLICT (id) DO NOTHING;
+-- 1. Crear el bucket 'signage-contents' de forma pública con un límite extendido de 500MB (524288000 bytes)
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types) 
+VALUES ('signage-contents', 'signage-contents', true, 524288000, '{image/*,video/*,audio/*}')
+ON CONFLICT (id) DO UPDATE SET 
+  file_size_limit = 524288000,
+  allowed_mime_types = '{image/*,video/*,audio/*}';
 
 -- 2. Permitir que cualquier usuario acceda a descargar/ver archivos multimedia del bucket 'signage-contents'
 CREATE POLICY "Permitir lectura de bucket publico" 

@@ -384,6 +384,30 @@ function mapToCamelCase(obj: any): any {
   return obj;
 }
 
+function adjustContentItem(item: any, direction: 'toDb' | 'fromDb'): any {
+  if (!item) return item;
+  if (direction === 'toDb') {
+    if (item.type === 'audio') {
+      return { ...item, type: 'text' };
+    }
+  } else {
+    // Detect audio files by extension or typical patterns in URLs
+    if (item.type === 'text' && typeof item.url === 'string' && (
+      item.url.toLowerCase().endsWith('.mp3') ||
+      item.url.toLowerCase().endsWith('.wav') ||
+      item.url.toLowerCase().endsWith('.m4a') ||
+      item.url.toLowerCase().endsWith('.ogg') ||
+      item.url.toLowerCase().includes('.mp3') ||
+      item.url.toLowerCase().includes('.wav') ||
+      item.url.toLowerCase().includes('.m4a') ||
+      item.url.toLowerCase().includes('/signage-contents/')
+    )) {
+      return { ...item, type: 'audio' };
+    }
+  }
+  return item;
+}
+
 // --------------------------------------------------------------------
 // MOCK ACCESSORS DEFINITIONS
 // --------------------------------------------------------------------
@@ -712,7 +736,9 @@ export function onSnapshot(ref: any, callback: any, errorCallback?: any) {
             throw error;
           }
         } else {
-          callback(new MockDocSnapshot(docId, mapToCamelCase(data)));
+          const camel = mapToCamelCase(data);
+          const finalData = colPath === 'contents' ? adjustContentItem(camel, 'fromDb') : camel;
+          callback(new MockDocSnapshot(docId, finalData));
         }
       } else {
         let qBuilder = supabase.from(colPath).select('*');
@@ -739,7 +765,11 @@ export function onSnapshot(ref: any, callback: any, errorCallback?: any) {
         const { data, error } = await qBuilder;
         if (error) throw error;
         
-        const docs = (data || []).map(row => new MockDocSnapshot(row.id, mapToCamelCase(row)));
+        const docs = (data || []).map(row => {
+          const camel = mapToCamelCase(row);
+          const finalData = colPath === 'contents' ? adjustContentItem(camel, 'fromDb') : camel;
+          return new MockDocSnapshot(row.id, finalData);
+        });
         callback(new MockQuerySnapshot(docs));
       }
     } catch (err) {
@@ -778,12 +808,16 @@ export function onSnapshot(ref: any, callback: any, errorCallback?: any) {
 
 export async function addDoc(collectionRef: any, data: any) {
   const colPath = collectionRef.path;
-  const resolvedData = { ...data };
+  let resolvedData = { ...data };
   
   for (const key of Object.keys(resolvedData)) {
     if (resolvedData[key] && resolvedData[key].type === 'serverTimestamp') {
       resolvedData[key] = new Date().toISOString();
     }
+  }
+
+  if (colPath === 'contents') {
+    resolvedData = adjustContentItem(resolvedData, 'toDb');
   }
 
   if (!supabase) {
@@ -814,12 +848,17 @@ export async function addDoc(collectionRef: any, data: any) {
 export async function updateDoc(docRef: any, data: any) {
   const colPath = docRef.collectionPath;
   const docId = docRef.docId;
+  let resolvedData = { ...data };
+
+  if (colPath === 'contents') {
+    resolvedData = adjustContentItem(resolvedData, 'toDb');
+  }
 
   if (!supabase) {
     const items = getLocalCollection(colPath);
     const index = items.findIndex(item => item.id === docId);
     if (index !== -1) {
-      items[index] = { ...items[index], ...data };
+      items[index] = { ...items[index], ...resolvedData };
       setLocalCollection(colPath, items);
       notifyListeners(colPath);
       notifyDocListeners(colPath, docId);
@@ -829,7 +868,7 @@ export async function updateDoc(docRef: any, data: any) {
     return;
   }
 
-  const snakeData = mapToSnakeCase(data);
+  const snakeData = mapToSnakeCase(resolvedData);
   const { error } = await supabase
     .from(colPath)
     .update(snakeData)
@@ -841,14 +880,19 @@ export async function updateDoc(docRef: any, data: any) {
 export async function setDoc(docRef: any, data: any) {
   const colPath = docRef.collectionPath;
   const docId = docRef.docId;
+  let resolvedData = { ...data };
+
+  if (colPath === 'contents') {
+    resolvedData = adjustContentItem(resolvedData, 'toDb');
+  }
 
   if (!supabase) {
     const items = getLocalCollection(colPath);
     const index = items.findIndex(item => item.id === docId);
     if (index !== -1) {
-      items[index] = { id: docId, ...data };
+      items[index] = { id: docId, ...resolvedData };
     } else {
-      items.push({ id: docId, ...data });
+      items.push({ id: docId, ...resolvedData });
     }
     setLocalCollection(colPath, items);
     notifyListeners(colPath);
@@ -856,7 +900,7 @@ export async function setDoc(docRef: any, data: any) {
     return;
   }
 
-  const snakeData = { ...mapToSnakeCase(data), id: docId };
+  const snakeData = { ...mapToSnakeCase(resolvedData), id: docId };
   const { error } = await supabase
     .from(colPath)
     .upsert([snakeData]);
@@ -906,7 +950,9 @@ export async function getDoc(docRef: any) {
     }
     throw error;
   }
-  return new MockDocSnapshot(docId, mapToCamelCase(data));
+  const camel = mapToCamelCase(data);
+  const finalData = colPath === 'contents' ? adjustContentItem(camel, 'fromDb') : camel;
+  return new MockDocSnapshot(docId, finalData);
 }
 
 export async function getDocs(ref: any) {
@@ -947,7 +993,11 @@ export async function getDocs(ref: any) {
   const { data, error } = await qBuilder;
   if (error) throw error;
 
-  const docs = (data || []).map(row => new MockDocSnapshot(row.id, mapToCamelCase(row)));
+  const docs = (data || []).map(row => {
+    const camel = mapToCamelCase(row);
+    const finalData = colPath === 'contents' ? adjustContentItem(camel, 'fromDb') : camel;
+    return new MockDocSnapshot(row.id, finalData);
+  });
   return new MockQuerySnapshot(docs);
 }
 
@@ -1035,7 +1085,7 @@ class MockUploadTask {
           await supabase.storage.createBucket('signage-contents', {
             public: true,
             file_size_limit: 524288000,
-            allowed_mime_types: ['image/*', 'video/*']
+            allowed_mime_types: ['image/*', 'video/*', 'audio/*']
           });
           console.log("🚀 Supabase Storage bucket 'signage-contents' created programmatically with 500MB limit!");
         } catch (createErr) {
@@ -1043,7 +1093,7 @@ class MockUploadTask {
             await supabase.storage.updateBucket('signage-contents', {
               public: true,
               file_size_limit: 524288000,
-              allowed_mime_types: ['image/*', 'video/*']
+              allowed_mime_types: ['image/*', 'video/*', 'audio/*']
             });
             console.log("🚀 Supabase Storage bucket 'signage-contents' updated successfully to 500MB limit!");
           } catch (updateErr) {

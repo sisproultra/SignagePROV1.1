@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { db, collection, addDoc, onSnapshot, query, where, doc, updateDoc, deleteDoc } from '../../lib/supabase';
-import { Store, Monitor, Plus, MapPin, Trash2, Edit2, AlertCircle, Link as LinkIcon, ListMusic, Check, HelpCircle, ArrowRight, Film, Image as ImageIcon, Play, X, ChevronUp, ChevronDown } from 'lucide-react';
+import { Store, Monitor, Plus, MapPin, Trash2, Edit2, AlertCircle, Link as LinkIcon, ListMusic, Check, HelpCircle, ArrowRight, Film, Image as ImageIcon, Play, X, ChevronUp, ChevronDown, Music } from 'lucide-react';
 
 export default function Stores() {
   const [stores, setStores] = useState<any[]>([]);
@@ -16,6 +16,8 @@ export default function Stores() {
   const [activeScreenForContents, setActiveScreenForContents] = useState<any>(null);
   const [selectedContentIds, setSelectedContentIds] = useState<string[]>([]);
   const [tempScreenItems, setTempScreenItems] = useState<any[]>([]);
+  const [tempBgAudioUrl, setTempBgAudioUrl] = useState<string>('');
+  const [modalGalleryTab, setModalGalleryTab] = useState<'visual' | 'audio'>('visual');
   const [previewScreenId, setPreviewScreenId] = useState<string | null>(null);
 
   const [storeToEdit, setStoreToEdit] = useState<any>(null);
@@ -61,6 +63,7 @@ export default function Stores() {
     try {
       await updateDoc(doc(db, 'screens', screenId), {
         items: tempScreenItems,
+        bgAudioUrl: tempBgAudioUrl,
         currentPlaylistId: null // limpia playlist fija para priorizar la lista directa
       });
 
@@ -224,6 +227,11 @@ export default function Stores() {
                         <div>
                           <h4 className="font-extrabold text-sm text-white line-clamp-1">{screen.name}</h4>
                           <span className="text-[10px] text-slate-500 font-mono font-medium block leading-none mt-1">{screen.locationInStore || 'Sin ubicación'}</span>
+                          {screen.bgAudioUrl && (
+                            <span className="text-[9px] text-rose-500 font-bold uppercase tracking-wider flex items-center gap-1 mt-1.5 font-sans">
+                              <Music className="w-2.5 h-2.5 text-rose-500 animate-pulse" /> Música de fondo activa
+                            </span>
+                          )}
                         </div>
                       </div>
                       
@@ -275,6 +283,7 @@ export default function Stores() {
                           onClick={() => {
                             setActiveScreenForContents(screen);
                             setTempScreenItems(screen.items ? [...screen.items] : []);
+                            setTempBgAudioUrl(screen.bgAudioUrl || '');
                             setIsContentSelectModalOpen(true);
                           }}
                           className="flex-1 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-[9px] font-black uppercase tracking-wider py-2 transition-all text-center cursor-pointer shadow-sm active:scale-[0.98] flex items-center justify-center gap-1"
@@ -487,62 +496,150 @@ export default function Stores() {
               <div className="lg:col-span-5 space-y-4 flex flex-col min-h-0">
                 <div className="flex items-center justify-between mb-1">
                   <h4 className="text-xs font-black uppercase tracking-wider text-slate-400 font-mono">1. Galería de Contenidos</h4>
-                  <span className="text-[10px] font-bold text-slate-500 font-mono">{contents.length} disponibles</span>
+                  <span className="text-[10px] font-bold text-slate-500 font-mono">
+                    {modalGalleryTab === 'visual' 
+                      ? `${contents.filter(c => c.type !== 'audio').length} visuales` 
+                      : `${contents.filter(c => c.type === 'audio').length} audios`
+                    } disponibles
+                  </span>
                 </div>
 
-                <div className="grid grid-cols-1 gap-2.5 overflow-y-auto pr-1 flex-1 max-h-[48vh] custom-scrollbar">
-                  {contents.map((content) => {
-                    const countInSequence = tempScreenItems.filter(item => item.contentId === content.id).length;
-                    return (
-                      <div
-                        key={content.id}
-                        className="bg-slate-850/50 border border-slate-800 hover:border-slate-700 p-3 rounded-xl flex gap-3 items-center justify-between transition-all"
-                      >
-                        <div className="flex gap-3 items-center min-w-0">
-                          <div className="p-2.5 bg-slate-950/80 rounded-lg border border-slate-800/40 shrink-0 relative">
-                            {content.type === 'video' ? (
-                              <Film className="w-4 h-4 text-rose-400" />
-                            ) : (
-                              <ImageIcon className="w-4 h-4 text-emerald-400" />
-                            )}
-                            {countInSequence > 0 && (
-                              <span className="absolute -top-1.5 -right-1.5 bg-emerald-500 text-slate-950 font-mono text-[8px] font-black rounded-full w-4.5 h-4.5 flex items-center justify-center border border-slate-900 shadow">
-                                x{countInSequence}
-                              </span>
-                            )}
-                          </div>
-                          
-                          <div className="min-w-0">
-                            <p className="font-bold text-xs text-white truncate">{content.name}</p>
-                            <p className="font-mono text-[9px] text-slate-500 mt-1 capitalize">{content.type} • {content.duration || 15}s</p>
-                          </div>
-                        </div>
+                {/* Categorías de Galería con diseño Leonisa Luxury */}
+                <div className="flex bg-slate-950 p-1.5 rounded-[1.25rem] border border-slate-800/60">
+                  <button
+                    type="button"
+                    onClick={() => setModalGalleryTab('visual')}
+                    className={`flex-grow py-2.5 rounded-xl font-extrabold text-[10px] tracking-wider uppercase transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                      modalGalleryTab === 'visual'
+                        ? 'bg-rose-600 text-white shadow-lg shadow-rose-955/40 font-mono'
+                        : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
+                    }`}
+                  >
+                    <Film className="w-3.5 h-3.5" />
+                    Videos/Fotos ({contents.filter(c => c.type !== 'audio').length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setModalGalleryTab('audio')}
+                    className={`flex-grow py-2.5 rounded-xl font-extrabold text-[10px] tracking-wider uppercase transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                      modalGalleryTab === 'audio'
+                        ? 'bg-rose-600 text-white shadow-lg shadow-rose-955/40 font-mono'
+                        : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
+                    }`}
+                  >
+                    <Music className="w-3.5 h-3.5" />
+                    Audios/MP3 ({contents.filter(c => c.type === 'audio').length})
+                  </button>
+                </div>
 
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setTempScreenItems(prev => [
-                              ...prev,
-                              {
-                                contentId: content.id,
-                                name: content.name,
-                                type: content.type || 'video',
-                                duration: content.duration || 15,
-                                url: content.url || ''
-                              }
-                            ]);
-                          }}
-                          className="bg-rose-600/10 hover:bg-rose-600 text-rose-400 hover:text-white px-3 py-1.5 rounded-lg text-[10px] uppercase font-mono font-black tracking-wider transition-all cursor-pointer whitespace-nowrap"
+                <div className="grid grid-cols-1 gap-3 overflow-y-auto pr-1 flex-1 max-h-[46vh] custom-scrollbar">
+                  {modalGalleryTab === 'visual' ? (
+                    contents.filter(c => c.type !== 'audio').map((content) => {
+                      const countInSequence = tempScreenItems.filter(item => item.contentId === content.id).length;
+                      return (
+                        <div
+                          key={content.id}
+                          className="bg-slate-850/50 border border-slate-800/60 hover:border-slate-700 p-3.5 rounded-2xl flex gap-3.5 items-center justify-between transition-all"
                         >
-                          ＋ Agregar
-                        </button>
-                      </div>
-                    );
-                  })}
+                          <div className="flex gap-3.5 items-center min-w-0">
+                            <div className="p-2.5 bg-slate-950/80 rounded-xl border border-slate-800/40 shrink-0 relative">
+                              {content.type === 'video' ? (
+                                <Film className="w-4 h-4 text-rose-400" />
+                              ) : (
+                                <ImageIcon className="w-4 h-4 text-emerald-400" />
+                              )}
+                              {countInSequence > 0 && (
+                                <span className="absolute -top-1.5 -right-1.5 bg-rose-600 text-white font-mono text-[8px] font-black rounded-full w-4.5 h-4.5 flex items-center justify-center border border-slate-900 shadow">
+                                  x{countInSequence}
+                                </span>
+                              )}
+                            </div>
+                            
+                            <div className="min-w-0">
+                              <p className="font-bold text-xs text-white truncate">{content.name}</p>
+                              <p className="font-mono text-[9px] text-slate-500 mt-0.5 capitalize">{content.type} • {content.duration || 15}s</p>
+                            </div>
+                          </div>
 
-                  {contents.length === 0 && (
-                    <div className="text-center py-16 bg-slate-850/30 border-2 border-dashed border-slate-800 rounded-2xl italic text-xs text-slate-500">
-                      No hay videos cargados en la biblioteca. Sube contenidos para agregarlos aquí.
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setTempScreenItems(prev => [
+                                ...prev,
+                                {
+                                  contentId: content.id,
+                                  name: content.name,
+                                  type: content.type || 'video',
+                                  duration: content.duration || 15,
+                                  url: content.url || ''
+                                }
+                              ]);
+                            }}
+                            className="bg-rose-600/10 hover:bg-rose-600 text-rose-400 hover:text-white px-3.5 py-2 rounded-xl text-[10px] uppercase font-mono font-black tracking-wider transition-all cursor-pointer whitespace-nowrap active:scale-95 duration-150"
+                          >
+                            ＋ Agregar
+                          </button>
+                        </div>
+                      );
+                    })
+                  ) : (
+                    contents.filter(c => c.type === 'audio').map((content) => {
+                      const isSelected = tempBgAudioUrl === content.url;
+                      return (
+                        <div
+                          key={content.id}
+                          className={`p-3.5 rounded-2xl flex gap-3.5 items-center justify-between transition-all border ${
+                            isSelected 
+                              ? 'bg-rose-950/10 border-rose-500/40 shadow-lg shadow-rose-950/10' 
+                              : 'bg-slate-850/50 border-slate-800/60 hover:border-slate-700'
+                          }`}
+                        >
+                          <div className="flex gap-3.5 items-center min-w-0">
+                            <div className={`p-2.5 rounded-xl border shrink-0 transition-all ${
+                              isSelected 
+                                ? 'bg-rose-900/30 border-rose-500/30 text-rose-400' 
+                                : 'bg-slate-950/80 border-slate-800/40 text-slate-400'
+                            }`}>
+                              <Music className={`w-4 h-4 ${isSelected ? 'animate-pulse text-rose-500' : ''}`} />
+                            </div>
+                            
+                            <div className="min-w-0">
+                              <p className={`font-bold text-xs truncate ${isSelected ? 'text-rose-400' : 'text-white'}`}>{content.name}</p>
+                              <p className="font-mono text-[8.5px] text-slate-500 mt-0.5">Música de fondo MP3</p>
+                            </div>
+                          </div>
+
+                          {isSelected ? (
+                            <button
+                              type="button"
+                              onClick={() => setTempBgAudioUrl('')}
+                              className="bg-rose-600 text-white px-3.5 py-2 rounded-xl text-[10px] uppercase font-mono font-black tracking-wider transition-all cursor-pointer whitespace-nowrap active:scale-95 duration-150"
+                            >
+                              🔇 Desactivar
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setTempBgAudioUrl(content.url || '')}
+                              className="bg-slate-800 hover:bg-rose-600 hover:text-white text-slate-300 px-3.5 py-2 rounded-xl text-[10px] uppercase font-mono font-black tracking-wider transition-all cursor-pointer whitespace-nowrap active:scale-95 duration-150"
+                            >
+                              🔊 Sintonizar
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
+
+                  {modalGalleryTab === 'visual' && contents.filter(c => c.type !== 'audio').length === 0 && (
+                    <div className="text-center py-16 bg-slate-850/30 border border-dashed border-slate-800 rounded-2xl italic text-xs text-slate-500">
+                      No hay videos ni fotos en la biblioteca de contenidos.
+                    </div>
+                  )}
+
+                  {modalGalleryTab === 'audio' && contents.filter(c => c.type === 'audio').length === 0 && (
+                    <div className="text-center py-16 bg-slate-850/30 border border-dashed border-slate-800 rounded-2xl italic text-xs text-slate-500">
+                      No hay archivos de música de fondo MP3 en la biblioteca. Sube sonidos para asignarlos aquí.
                     </div>
                   )}
                 </div>
@@ -559,6 +656,42 @@ export default function Stores() {
                     <span className="text-[9px] font-mono font-bold uppercase tracking-wider bg-rose-500/10 text-rose-400 px-2 py-0.5 rounded border border-rose-500/10">
                       {tempScreenItems.length} CLIPS EN COLA
                     </span>
+                  </div>
+
+                  {/* Selector de Música de Fondo directa ultra-compacto y elegante */}
+                  <div className="mb-4 bg-slate-900/60 border border-slate-800/40 p-3.5 rounded-2xl flex items-center justify-between gap-4 transition-all hover:bg-slate-900 hover:border-slate-800">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="p-2 bg-slate-950 rounded-lg border border-slate-800">
+                        <Music className={`w-3.5 h-3.5 ${tempBgAudioUrl ? 'text-rose-500 animate-pulse' : 'text-slate-500'}`} />
+                      </div>
+                      <div className="min-w-0">
+                        <label className="text-[9px] font-bold uppercase text-slate-400 tracking-wider font-sans block">
+                          Música de Fondo
+                        </label>
+                        {tempBgAudioUrl ? (
+                          <span className="text-[10.5px] text-rose-400 font-bold block truncate max-w-[140px] md:max-w-[200px]">
+                            {contents.find(c => c.url === tempBgAudioUrl)?.name || 'Audio Sintonizado'}
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-slate-500 font-mono italic block">Silenciado</span>
+                        )}
+                      </div>
+                    </div>
+                    
+                    <div className="w-48 shrink-0">
+                      <select 
+                        className="w-full bg-slate-950 text-slate-300 px-3 py-2 rounded-xl border border-white/5 focus:outline-none focus:ring-1 focus:ring-rose-500/55 transition-all text-[11px] font-mono tracking-wide"
+                        value={tempBgAudioUrl}
+                        onChange={e => setTempBgAudioUrl(e.target.value)}
+                      >
+                        <option value="">🔇 Desactivar música</option>
+                        {contents.filter(c => c.type === 'audio').map(c => (
+                          <option key={c.id} value={c.url}>
+                            🎵 {c.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
 
                   <div className="space-y-2 overflow-y-auto pr-1 max-h-[42vh] custom-scrollbar flex-1">
