@@ -386,22 +386,24 @@ function mapToCamelCase(obj: any): any {
 
 function adjustContentItem(item: any, direction: 'toDb' | 'fromDb'): any {
   if (!item) return item;
+  const lowerUrl = typeof item.url === 'string' ? item.url.toLowerCase() : '';
+  const isAudioFile = lowerUrl.endsWith('.mp3') || 
+                      lowerUrl.endsWith('.wav') || 
+                      lowerUrl.endsWith('.m4a') || 
+                      lowerUrl.endsWith('.ogg') ||
+                      lowerUrl.includes('.mp3') ||
+                      lowerUrl.includes('.wav') ||
+                      lowerUrl.includes('.m4a') ||
+                      lowerUrl.includes('/signage-contents/') ||
+                      lowerUrl.includes('audio');
+
   if (direction === 'toDb') {
-    if (item.type === 'audio') {
+    if (item.type === 'audio' || isAudioFile) {
       return { ...item, type: 'text' };
     }
   } else {
     // Detect audio files by extension or typical patterns in URLs
-    if (item.type === 'text' && typeof item.url === 'string' && (
-      item.url.toLowerCase().endsWith('.mp3') ||
-      item.url.toLowerCase().endsWith('.wav') ||
-      item.url.toLowerCase().endsWith('.m4a') ||
-      item.url.toLowerCase().endsWith('.ogg') ||
-      item.url.toLowerCase().includes('.mp3') ||
-      item.url.toLowerCase().includes('.wav') ||
-      item.url.toLowerCase().includes('.m4a') ||
-      item.url.toLowerCase().includes('/signage-contents/')
-    )) {
+    if ((item.type === 'text' || !item.type) && isAudioFile) {
       return { ...item, type: 'audio' };
     }
   }

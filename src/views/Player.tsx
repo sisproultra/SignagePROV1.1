@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import { db, doc, onSnapshot, updateDoc, getDoc, addDoc, collection, query, where, getDocs, updateSupabaseConfig } from '../lib/supabase';
 import { motion, AnimatePresence } from 'motion/react';
-import { Loader2, AlertCircle, MonitorOff } from 'lucide-react';
+import { Loader2, AlertCircle, MonitorOff, Volume2, VolumeX, Music } from 'lucide-react';
 
 interface SignageMediaVideoProps {
   url: string;
@@ -91,8 +91,41 @@ export default function Player() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [playbackStarted, setPlaybackStarted] = useState(false);
+  const [playbackStarted, setPlaybackStarted] = useState(true);
   const [retryCount, setRetryCount] = useState(0);
+
+  const [loadProgress, setLoadProgress] = useState(0);
+  const [progressLabel, setProgressLabel] = useState("Iniciando...");
+
+  useEffect(() => {
+    let interval: any;
+    if (loading) {
+      interval = setInterval(() => {
+        setLoadProgress(prev => {
+          if (prev < 30) {
+            setProgressLabel("Estableciendo enlace seguro...");
+            return prev + Math.floor(Math.random() * 8) + 4;
+          } else if (prev < 65) {
+            setProgressLabel("Descargando contenidos de tienda...");
+            return prev + Math.floor(Math.random() * 5) + 2;
+          } else if (prev < 90) {
+            setProgressLabel("Sincronizando flujos y clips...");
+            return prev + Math.floor(Math.random() * 3) + 1;
+          } else if (prev < 98) {
+            setProgressLabel("Cargando reproductor... casi listo");
+            return prev + 1;
+          } else {
+            setProgressLabel("Cargando reproductor... casi listo");
+            return prev;
+          }
+        });
+      }, 120);
+    } else {
+      setProgressLabel("Señal sincronizada correctamente");
+      setLoadProgress(100);
+    }
+    return () => clearInterval(interval);
+  }, [loading]);
   
   const timerRef = useRef<any>(null);
   const bgAudioRef = useRef<HTMLAudioElement>(null);
@@ -104,16 +137,24 @@ export default function Player() {
     return rawPlaylist?.bgAudioUrl || "";
   }, [screen?.items, screen?.bgAudioUrl, rawPlaylist?.bgAudioUrl]);
 
+  const [audioBlocked, setAudioBlocked] = useState(false);
+
   useEffect(() => {
     const audioObj = bgAudioRef.current;
     if (!audioObj) return;
 
     if (playbackStarted && bgAudioUrlToPlay) {
-      console.log(`[Player] Iniciando música de fondo en bucle: ${bgAudioUrlToPlay}`);
+      const directUrl = getDirectUrl(bgAudioUrlToPlay);
+      console.log(`[Player] Iniciando música de fondo en bucle: ${directUrl}`);
       audioObj.volume = 0.5; // Música de fondo agradable al 50% de volumen para no saturar
-      audioObj.play().catch(err => {
-        console.warn("[Player] Fallo al reproducir audio de fondo, re-intentando al hacer click:", err);
-      });
+      audioObj.play()
+        .then(() => {
+          setAudioBlocked(false);
+        })
+        .catch(err => {
+          console.warn("[Player] Fallo al reproducir audio de fondo, re-intentando al hacer click:", err);
+          setAudioBlocked(true);
+        });
     } else {
       audioObj.pause();
     }
@@ -377,7 +418,6 @@ export default function Player() {
       console.log("[Player] Cambio en la secuencia de videos detectado en vivo:", currentPlaylistIdsStr);
       prevPlaylistIdsStrRef.current = currentPlaylistIdsStr;
       setCurrentIndex(0);
-      // Si la playlist cambia con contenido válido, habilitamos el inicio de playback automático
       if (playlistItems.length > 0) {
         setPlaybackStarted(true);
       }
@@ -482,57 +522,95 @@ export default function Player() {
     return url;
   };
 
-  if (loading) {
+  if (loading || loadProgress < 100) {
     return (
-      <div className="h-screen bg-slate-950 flex flex-col items-center justify-center text-rose-500">
-        <Loader2 className="w-12 h-12 animate-spin mb-6" />
-        <p className="font-mono text-[10px] uppercase tracking-[0.4em] animate-pulse font-bold text-slate-500">Sincronización Leonisa</p>
+      <div className="h-screen w-screen bg-slate-50 flex flex-col items-center justify-center p-6 select-none font-sans">
+        <div className="w-full max-w-md p-10 bg-white rounded-3xl border border-slate-200/60 shadow-[0_12px_40px_rgb(0,0,0,0.04)] flex flex-col items-center">
+          {/* Leonisa Brand Header */}
+          <div className="flex items-center gap-2 mb-10">
+            <div className="w-8 h-8 rounded-xl bg-rose-600 flex items-center justify-center font-black text-white text-lg shadow-md shadow-rose-200">
+              L
+            </div>
+            <span className="text-sm font-black tracking-widest text-slate-900 uppercase">LEONISA</span>
+            <span className="text-xs font-medium text-slate-400 font-mono">Signage</span>
+          </div>
+
+          <div className="w-full space-y-4">
+            <div className="flex justify-between items-end">
+              <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest font-sans">
+                {progressLabel}
+              </span>
+              <span className="text-xs font-mono font-bold text-rose-600">
+                {Math.min(loadProgress, 100)}%
+              </span>
+            </div>
+
+            {/* Modern intelligence progress bar */}
+            <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden relative border border-slate-100/55">
+              <motion.div
+                className="h-full bg-rose-600 rounded-full"
+                initial={{ width: '0%' }}
+                animate={{ width: `${Math.min(loadProgress, 100)}%` }}
+                transition={{ duration: 0.15, ease: "easeOut" }}
+              />
+            </div>
+
+            <div className="flex items-center gap-2 justify-center pt-4">
+              <Loader2 className="w-3.5 h-3.5 text-rose-500 animate-spin" />
+              <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider font-mono">
+                Conectando Señal...
+              </span>
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="h-screen bg-slate-950 flex flex-col items-center justify-center text-rose-500 p-8 text-center relative overflow-hidden">
-        <div className="atmosphere absolute w-full h-full opacity-20" />
-        <MonitorOff className="w-32 h-32 mb-8 opacity-20 relative z-10" />
-        <h2 className="text-4xl font-bold mb-4 tracking-tighter text-white relative z-10">Fallo de Nodo</h2>
-        <p className="text-xs opacity-50 font-mono uppercase tracking-widest relative z-10">{error}</p>
-        <button 
-          onClick={() => window.location.reload()}
-          className="mt-12 bg-rose-500/10 px-6 py-3 rounded-2xl border border-rose-500/20 text-[10px] font-bold uppercase tracking-widest text-rose-400 relative z-10 hover:bg-rose-500/20 cursor-pointer"
-        >
-          REINTENTAR CONEXIÓN
-        </button>
+      <div className="h-screen w-screen bg-slate-50 flex flex-col items-center justify-center p-6 select-none font-sans">
+        <div className="w-full max-w-md p-10 bg-white rounded-3xl border border-slate-200/60 shadow-[0_12px_40px_rgb(0,0,0,0.06)] flex flex-col items-center text-center">
+          <div className="w-20 h-20 bg-rose-50 rounded-2xl flex items-center justify-center mb-6">
+            <MonitorOff className="w-10 h-10 text-rose-500" />
+          </div>
+          <h2 className="text-2xl font-black mb-2 tracking-tight text-slate-900">Configurando Pantalla</h2>
+          <p className="text-xs text-slate-500 font-medium leading-relaxed mb-6 font-sans">
+            Estamos sincronizando la señal de este nodo. Si es la primera vez que se inicia, verifica la vinculación.
+          </p>
+          
+          <div className="w-full bg-slate-50 p-4 rounded-2xl border border-slate-100 text-left mb-8">
+            <span className="text-[8px] font-black uppercase text-slate-400 tracking-wider font-mono block mb-1">Estado de Conexión</span>
+            <p className="text-[10px] text-slate-600 font-mono font-medium leading-normal">{error}</p>
+          </div>
+
+          <button 
+            onClick={() => window.location.reload()}
+            className="w-full bg-rose-600 hover:bg-rose-500 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest py-3.5 transition-all text-center cursor-pointer shadow-md shadow-rose-100 active:scale-95"
+          >
+            Sincronizar Señal Ahora
+          </button>
+        </div>
       </div>
     );
   }
 
   return (
     <div 
-      className="h-screen w-screen bg-slate-950 overflow-hidden relative cursor-none p-0 m-0"
+      className={`h-screen w-screen bg-slate-950 overflow-hidden relative p-0 m-0 ${audioBlocked ? 'cursor-default' : 'cursor-none'}`}
       onClick={() => {
-        if (!playbackStarted) {
-          setPlaybackStarted(true);
+        // Forzar la reproducción de música de fondo mediante interacción de usuario (clic)
+        if (bgAudioRef.current && bgAudioUrlToPlay) {
+          bgAudioRef.current.play()
+            .then(() => {
+              console.log("[Player] Éxito: Música de fondo iniciada por clic de usuario");
+              setAudioBlocked(false);
+            })
+            .catch(err => console.warn("[Player] Autoplay de audio bloqueado por navegador:", err));
         }
       }}
     >
       <AnimatePresence mode="wait">
-        {!playbackStarted && playlistItems.length > 0 && (
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="absolute inset-0 z-[200] bg-slate-950 flex items-center justify-center cursor-pointer"
-          >
-             <div className="text-center p-12 bg-white/5 backdrop-blur-2xl rounded-[3rem] border border-white/10 shadow-2xl">
-                <p className="text-rose-500 font-black text-xs uppercase tracking-[0.4em] mb-4">Señal Sincronizada</p>
-                <h2 className="text-white text-3xl font-bold mb-8">Toca para Iniciar Reproducción</h2>
-                <div className="w-16 h-16 bg-rose-600 rounded-full flex items-center justify-center mx-auto animate-bounce shadow-lg shadow-rose-900/40">
-                  <div className="w-0 h-0 border-t-[8px] border-t-transparent border-l-[14px] border-l-white border-b-[8px] border-b-transparent ml-1"></div>
-                </div>
-             </div>
-          </motion.div>
-        )}
 
         {playlistItems.length === 0 ? (
           <motion.div 
@@ -608,7 +686,9 @@ export default function Player() {
                         isNext={isNext}
                         loop={playlistItems.length === 1}
                         onPlayStarted={() => {
-                          setPlaybackStarted(true);
+                          if (!bgAudioUrlToPlay) {
+                            setPlaybackStarted(true);
+                          }
                         }}
                         onNextReady={() => console.log(`[Player] Video siguiente pre-buffereado: "${playlistItems[nextIndex]?.name}"`)}
                         onEnded={() => {
@@ -652,8 +732,51 @@ export default function Player() {
         )}
       </AnimatePresence>
 
+      {/* Control / Indicador interactivo de reproducción de música de fondo */}
+      {bgAudioUrlToPlay && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            const audioObj = bgAudioRef.current;
+            if (!audioObj) return;
+
+            if (audioBlocked || audioObj.paused) {
+              audioObj.play()
+                .then(() => {
+                  setAudioBlocked(false);
+                })
+                .catch(err => {
+                  console.warn("[Player] Error al reproducir audio:", err);
+                  setAudioBlocked(true);
+                });
+            } else {
+              audioObj.pause();
+              setAudioBlocked(true);
+            }
+          }}
+          className={`absolute bottom-6 right-6 z-[300] bg-slate-950/90 hover:bg-slate-900 border backdrop-blur-xl px-4 py-2.5 rounded-2xl flex items-center gap-2.5 text-[10px] font-black tracking-wider transition-all cursor-pointer shadow-2xl active:scale-95 ${
+            audioBlocked 
+              ? 'border-rose-500/30 text-rose-500 animate-bounce' 
+              : 'border-slate-800 text-white opacity-40 hover:opacity-100'
+          }`}
+          title={audioBlocked ? "Hacer clic para activar música de fondo" : "Hacer clic para silenciar"}
+        >
+          {audioBlocked ? (
+            <>
+              <VolumeX className="w-4 h-4 text-rose-500 animate-pulse" />
+              <span>💥 HACER CLIC PARA ACTIVAR AUDIO DE FONDO</span>
+            </>
+          ) : (
+            <>
+              <Volume2 className="w-4 h-4 text-emerald-400 animate-pulse" />
+              <span className="text-emerald-400">MÚSICA DE FONDO REPRODUCIENDO</span>
+            </>
+          )}
+        </button>
+      )}
+
       {/* Overlay de Estado del Servidor */}
-      <div className="absolute bottom-6 right-6 flex items-center gap-4 opacity-0 hover:opacity-100 transition-opacity duration-500 z-50">
+      <div className="absolute bottom-6 left-6 flex items-center gap-4 opacity-0 hover:opacity-100 transition-opacity duration-500 z-50">
         <div className="bg-slate-950/80 backdrop-blur-xl px-12 py-3 rounded-full flex items-center gap-4 border border-white/5 shadow-2xl">
           <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse shadow-[0_0_10px_#34d399]" />
           <span className="text-[10px] text-white font-mono uppercase font-bold tracking-[0.3em]">{screen?.name}</span>
@@ -664,7 +787,7 @@ export default function Player() {
       {/* Hidden audio player for looping background music */}
       <audio 
         ref={bgAudioRef} 
-        src={bgAudioUrlToPlay} 
+        src={getDirectUrl(bgAudioUrlToPlay)} 
         loop 
         style={{ display: 'none' }} 
       />

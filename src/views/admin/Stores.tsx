@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { db, collection, addDoc, onSnapshot, query, where, doc, updateDoc, deleteDoc } from '../../lib/supabase';
-import { Store, Monitor, Plus, MapPin, Trash2, Edit2, AlertCircle, Link as LinkIcon, ListMusic, Check, HelpCircle, ArrowRight, Film, Image as ImageIcon, Play, X, ChevronUp, ChevronDown, Music } from 'lucide-react';
+import { Store, Monitor, Plus, MapPin, Trash2, Edit2, AlertCircle, Link as LinkIcon, ListMusic, Check, HelpCircle, ArrowRight, Film, Image as ImageIcon, Play, X, ChevronUp, ChevronDown, Music, Volume2, VolumeX } from 'lucide-react';
 
 export default function Stores() {
   const [stores, setStores] = useState<any[]>([]);
@@ -69,9 +69,25 @@ export default function Stores() {
 
       setIsContentSelectModalOpen(false);
       setActiveScreenForContents(null);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error saving screen contents:', err);
-      alert('Error al guardar la lista de reproducción');
+      const errStr = JSON.stringify(err).toLowerCase();
+      const isMissingCol = err?.message?.toLowerCase().includes('bg_audio_url') || 
+                           err?.hint?.toLowerCase().includes('bg_audio_url') || 
+                           errStr.includes('bg_audio_url') ||
+                           err?.code === 'PGRST204';
+      
+      if (isMissingCol) {
+        alert(
+          "⚠️ ERROR DE BASE DE DATOS (FALTA COLUMNA)\n\n" +
+          "La columna 'bg_audio_url' no existe en tu tabla 'screens' de Supabase.\n\n" +
+          "Para solucionarlo de inmediato y habilitar música de fondo, ve al 'SQL Editor' en tu panel de Supabase y ejecuta esta línea:\n\n" +
+          "ALTER TABLE public.screens ADD COLUMN IF NOT EXISTS bg_audio_url text;\n\n" +
+          "¡Luego de ejecutarlo, vuelve aquí e intenta guardar tu playlist de nuevo y funcionará perfectamente!"
+        );
+      } else {
+        alert('Error al guardar la lista de reproducción. Revisa que tus tablas de Supabase estén actualizadas.');
+      }
     }
   };
 
@@ -856,6 +872,7 @@ export default function Stores() {
                 <ScreenLivePreviewPlayer 
                   screen={screens.find(s => s.id === previewScreenId)} 
                   contents={contents} 
+                  playlists={playlists}
                 />
               </div>
             </div>
@@ -880,17 +897,58 @@ export default function Stores() {
   );
 }
 
-function ScreenLivePreviewPlayer({ screen, contents }: { screen: any; contents: any[] }) {
+function ScreenLivePreviewPlayer({ screen, contents, playlists = [] }: { screen: any; contents: any[]; playlists?: any[] }) {
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [isMuted, setIsMuted] = useState(false);
   const timerRef = React.useRef<any>(null);
+  const bgAudioRef = React.useRef<HTMLAudioElement>(null);
+
+  const rawPlaylist = React.useMemo(() => {
+    if (!screen?.currentPlaylistId || !playlists) return null;
+    return playlists.find((p: any) => p.id === screen.currentPlaylistId) || null;
+  }, [screen?.currentPlaylistId, playlists]);
 
   const playlistItems = React.useMemo(() => {
-    if (!screen?.items || screen.items.length === 0) return [];
-    return screen.items.map((item: any) => {
-      const contentDetail = contents.find(c => c.id === item.contentId);
-      return contentDetail ? { ...item, ...contentDetail } : null;
-    }).filter(Boolean);
-  }, [screen?.items, contents]);
+    // 1. Si la pantalla tiene items directos asignados (loop personalizado), cargarlos
+    if (screen?.items && screen.items.length > 0) {
+      return screen.items.map((item: any) => {
+        const contentDetail = contents.find(c => c.id === item.contentId);
+        return contentDetail ? { ...item, ...contentDetail } : null;
+      }).filter(Boolean);
+    }
+    // 2. Si no tiene items propios pero sí un playlist asignado, cargar los del playlist
+    if (rawPlaylist?.items && rawPlaylist.items.length > 0) {
+      return rawPlaylist.items.map((item: any) => {
+        const contentDetail = contents.find(c => c.id === item.contentId);
+        return contentDetail ? { ...item, ...contentDetail } : null;
+      }).filter(Boolean);
+    }
+    return [];
+  }, [screen?.items, rawPlaylist?.items, contents]);
+
+  const bgAudioUrlToPlay = React.useMemo(() => {
+    if (screen?.items && screen.items.length > 0) {
+      return screen.bgAudioUrl || "";
+    }
+    return rawPlaylist?.bgAudioUrl || "";
+  }, [screen?.items, screen?.bgAudioUrl, rawPlaylist?.bgAudioUrl]);
+
+  // Manejar reproducción del audio de fondo
+  useEffect(() => {
+    const audioObj = bgAudioRef.current;
+    if (!audioObj) return;
+
+    if (bgAudioUrlToPlay && !isMuted) {
+      const directUrl = getDirectUrl(bgAudioUrlToPlay);
+      console.log(`[Preview Player] Iniciando música de fondo en bucle: ${directUrl}`);
+      audioObj.volume = 0.5; // volumen moderado para previsualización
+      audioObj.play().catch(err => {
+        console.warn("[Preview Player] No se pudo auto-reproducir música de fondo por políticas del navegador:", err);
+      });
+    } else {
+      audioObj.pause();
+    }
+  }, [bgAudioUrlToPlay, isMuted]);
 
   const prevPlaylistIdsStrRef = React.useRef<string>('');
   useEffect(() => {
@@ -1009,6 +1067,46 @@ function ScreenLivePreviewPlayer({ screen, contents }: { screen: any; contents: 
           />
         ))}
       </div>
+
+      {/* Control / Indicador interactivo de reproducción de música de fondo */}
+      {bgAudioUrlToPlay && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            const nextMute = !isMuted;
+            setIsMuted(nextMute);
+            if (!nextMute && bgAudioRef.current) {
+              bgAudioRef.current.play().catch(err => {
+                console.warn("[Preview Player] Error al reproducir audio:", err);
+              });
+            }
+          }}
+          className="absolute bottom-4 right-4 z-20 bg-slate-900/90 hover:bg-slate-800 backdrop-blur-md border border-slate-800 px-3 py-1.5 rounded-xl flex items-center gap-2 text-[10px] font-black tracking-wider transition-all cursor-pointer shadow-lg active:scale-95 text-white"
+          title={isMuted ? "Activar música de fondo" : "Silenciar música de fondo"}
+        >
+          {isMuted ? (
+            <>
+              <VolumeX className="w-3.5 h-3.5 text-rose-500" />
+              <span>AUDIO SILENCIADO</span>
+            </>
+          ) : (
+            <>
+              <Volume2 className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
+              <span className="text-emerald-400">MÚSICA REPRODUCIENDO</span>
+            </>
+          )}
+        </button>
+      )}
+
+      {/* Hidden audio element */}
+      {bgAudioUrlToPlay && (
+        <audio
+          ref={bgAudioRef}
+          src={getDirectUrl(bgAudioUrlToPlay)}
+          loop
+          style={{ display: 'none' }}
+        />
+      )}
     </div>
   );
 }

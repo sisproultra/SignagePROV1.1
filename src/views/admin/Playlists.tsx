@@ -28,23 +28,44 @@ export default function Playlists() {
     e.preventDefault();
     if (newPlaylist.items.length === 0) return alert('Agrega al menos un contenido');
     
-    if (playlistToEdit) {
-      await updateDoc(doc(db, 'playlists', playlistToEdit.id), {
-        name: newPlaylist.name,
-        items: newPlaylist.items,
-        bgAudioUrl: newPlaylist.bgAudioUrl || ''
-      });
-    } else {
-      await addDoc(collection(db, 'playlists'), {
-        name: newPlaylist.name,
-        items: newPlaylist.items,
-        bgAudioUrl: newPlaylist.bgAudioUrl || '',
-        createdAt: new Date().toISOString()
-      });
+    try {
+      if (playlistToEdit) {
+        await updateDoc(doc(db, 'playlists', playlistToEdit.id), {
+          name: newPlaylist.name,
+          items: newPlaylist.items,
+          bgAudioUrl: newPlaylist.bgAudioUrl || ''
+        });
+      } else {
+        await addDoc(collection(db, 'playlists'), {
+          name: newPlaylist.name,
+          items: newPlaylist.items,
+          bgAudioUrl: newPlaylist.bgAudioUrl || '',
+          createdAt: new Date().toISOString()
+        });
+      }
+      setIsModalOpen(false);
+      setPlaylistToEdit(null);
+      setNewPlaylist({ name: '', items: [], bgAudioUrl: '' });
+    } catch (err: any) {
+      console.error('Error saving playlist:', err);
+      const errStr = JSON.stringify(err).toLowerCase();
+      const isMissingCol = err?.message?.toLowerCase().includes('bg_audio_url') || 
+                           err?.hint?.toLowerCase().includes('bg_audio_url') || 
+                           errStr.includes('bg_audio_url') ||
+                           err?.code === 'PGRST204';
+      
+      if (isMissingCol) {
+        alert(
+          "⚠️ ERROR DE BASE DE DATOS (FALTA COLUMNA)\n\n" +
+          "La columna 'bg_audio_url' no existe en tu tabla 'playlists' de Supabase.\n\n" +
+          "Para solucionarlo de inmediato y habilitar música de fondo en Playlists, ve al 'SQL Editor' en tu panel de Supabase y ejecuta esta línea:\n\n" +
+          "ALTER TABLE public.playlists ADD COLUMN IF NOT EXISTS bg_audio_url text;\n\n" +
+          "¡Luego intenta guardar tu lista de nuevo!"
+        );
+      } else {
+        alert('Error al guardar la lista de reproducción. Revisa que tus tablas de Supabase estén actualizadas.');
+      }
     }
-    setIsModalOpen(false);
-    setPlaylistToEdit(null);
-    setNewPlaylist({ name: '', items: [], bgAudioUrl: '' });
   };
 
   const openEdit = (playlist: any) => {
