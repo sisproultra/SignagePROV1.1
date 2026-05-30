@@ -38,7 +38,14 @@ function SignageMediaVideo({ url, name, isActive, loop, onEnded, onPlayStarted }
     } else {
       console.log(`[SignagePlayer] Carga / Pausa en fondo de video: "${name}"`);
       video.pause();
-      video.currentTime = 0;
+      // Retrasar el rebobinado a 0 para evitar que la transición de desvanecimiento (crossfade)
+      // muestre de repente el primer fotograma en lugar de quedarse congelado en el final/actual.
+      const timeout = setTimeout(() => {
+        if (!isActive && videoRef.current) {
+          videoRef.current.currentTime = 0;
+        }
+      }, 500);
+      return () => clearTimeout(timeout);
     }
   }, [isActive, url, name, onPlayStarted]);
 
@@ -54,6 +61,7 @@ function SignageMediaVideo({ url, name, isActive, loop, onEnded, onPlayStarted }
       crossOrigin="anonymous"
       loop={loop}
       onEnded={onEnded}
+      onPlaying={onPlayStarted}
       onError={(e) => {
         const videoElement = e.currentTarget;
         console.error('[SignagePlayer] Video error details:', {
@@ -77,6 +85,7 @@ export default function Player() {
   const [resolvedId, setResolvedId] = useState<string | null>(null);
   
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [visibleIndex, setVisibleIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [playbackStarted, setPlaybackStarted] = useState(false);
@@ -335,6 +344,7 @@ export default function Player() {
   useEffect(() => {
     if (playlistItems.length > 0 && currentIndex >= playlistItems.length) {
       setCurrentIndex(0);
+      setVisibleIndex(0);
     }
 
     const currentPlaylistIdsStr = playlistItems.map((item: any) => item.id).join(',');
@@ -342,12 +352,34 @@ export default function Player() {
       console.log("[Player] Cambio en la secuencia de videos detectado en vivo:", currentPlaylistIdsStr);
       prevPlaylistIdsStrRef.current = currentPlaylistIdsStr;
       setCurrentIndex(0);
+      setVisibleIndex(0);
       // Si la playlist cambia con contenido válido, habilitamos el inicio de playback automático
       if (playlistItems.length > 0) {
         setPlaybackStarted(true);
       }
     }
   }, [playlistItems, currentIndex]);
+
+  // Sincronizar visibleIndex con currentIndex usando transiciones pre-amortiguadas con un failsafe de 800ms
+  useEffect(() => {
+    const currentItem = playlistItems[currentIndex];
+    if (!currentItem) {
+      setVisibleIndex(currentIndex);
+      return;
+    }
+
+    if (currentItem.type !== 'video') {
+      // Para imágenes o textos, realizar la transición inmediatamente
+      setVisibleIndex(currentIndex);
+    } else {
+      // Failsafe: Si el video tarda demasiado o no dispara el evento onPlaying/onPlayStarted,
+      // forzar la transición visual pasados 800ms para evitar que la pantalla se quede colgada
+      const timeout = setTimeout(() => {
+        setVisibleIndex(currentIndex);
+      }, 800);
+      return () => clearTimeout(timeout);
+    }
+  }, [currentIndex, playlistItems]);
 
   // 6. CONTROLADOR DE TEMPORIZACIÓN CLÁSICA (Failsafe para transiciones automáticas)
   useEffect(() => {
@@ -514,7 +546,8 @@ export default function Player() {
         ) : (
           <div className="absolute inset-0 w-full h-full relative overflow-hidden">
             {playlistItems.map((item: any, index: number) => {
-              const isActive = index === currentIndex;
+              const isActive = index === currentIndex || index === visibleIndex;
+              const isVisible = index === visibleIndex;
               const directUrl = getDirectUrl(item.url);
               const ytId = getYouTubeId(item.url);
 
@@ -522,7 +555,7 @@ export default function Player() {
                 <div
                   key={item.id}
                   className={`absolute inset-0 w-full h-full transition-all duration-300 ease-in-out ${
-                    isActive 
+                    isVisible 
                       ? "opacity-100 pointer-events-auto z-10 scale-100 shadow-2xl" 
                       : "opacity-0 pointer-events-none z-0 scale-98"
                   }`}
@@ -549,7 +582,10 @@ export default function Player() {
                       name={item.name}
                       isActive={isActive}
                       loop={playlistItems.length === 1}
-                      onPlayStarted={() => setPlaybackStarted(true)}
+                      onPlayStarted={() => {
+                        setPlaybackStarted(true);
+                        setVisibleIndex(index);
+                      }}
                       onEnded={() => {
                         console.log('[Player] Final natural de clip alcanzado:', item.name);
                         if (playlistItems.length > 1) {
