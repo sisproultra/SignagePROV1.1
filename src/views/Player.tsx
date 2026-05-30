@@ -80,8 +80,27 @@ export default function Player() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [playbackStarted, setPlaybackStarted] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
   
   const timerRef = useRef<any>(null);
+
+  // Escuchar el evento 'supabase-ready' para re-iniciar la conexión si 
+  // Supabase se configura dinámicamente después del primer render
+  useEffect(() => {
+    const handleSupabaseReady = () => {
+      console.log('[Player] Supabase inicializado dinámicamente. Re-cargando datos...');
+      setLoading(true);
+      setError(null);
+      setScreen(null);
+      setRawPlaylist(null);
+      setContentsMap({});
+      // Forzar re-ejecución del efecto principal incrementando un contador
+      setRetryCount(prev => prev + 1);
+    };
+    
+    window.addEventListener('supabase-ready', handleSupabaseReady);
+    return () => window.removeEventListener('supabase-ready', handleSupabaseReady);
+  }, []);
 
   // 1. ESCUCHAR DE MANERA CONSTANTE Y EN TIEMPO REAL LA COLECCIÓN DE CONTENIDOS ('contents')
   useEffect(() => {
@@ -97,7 +116,7 @@ export default function Player() {
       console.error("[Player] Error al escuchar colección contents en vivo:", err);
     });
     return () => unsub();
-  }, []);
+  }, [retryCount]);
 
   // 2. ESCUCHAR DE MANERA CONSTANTE Y EN TIEMPO REAL LA PANTALLA ('screens')
   useEffect(() => {
@@ -252,7 +271,7 @@ export default function Player() {
       unsubScreen();
       if (statusInterval) clearInterval(statusInterval);
     };
-  }, [screenId]);
+  }, [screenId, retryCount]);
 
   // 3. ESCUCHAR DE MANERA CONSTANTE Y EN TIEMPO REAL LA PLAYLIST ACTIVA
   useEffect(() => {
@@ -274,7 +293,7 @@ export default function Player() {
     });
 
     return () => unsub();
-  }, [activePlaylistId]);
+  }, [activePlaylistId, retryCount]);
 
   // 4. GENERACIÓN EN TIEMPO REAL DE LOS ITEMS DE REPRODUCCIÓN (Mapeados desde contentsMap)
   const playlistItems = useMemo(() => {

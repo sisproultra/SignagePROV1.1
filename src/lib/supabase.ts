@@ -8,17 +8,37 @@
 import { createClient } from '@supabase/supabase-js';
 
 // Supabase environment variables containing automatic cleaning to prevent PGRST125 errors
+// Debug de variables de entorno en build de producción
+const metaEnv = (import.meta as any).env || {};
+if (metaEnv.DEV || !metaEnv.VITE_SUPABASE_URL) {
+  console.warn('[Supabase] VITE_SUPABASE_URL:', metaEnv.VITE_SUPABASE_URL ? '✅ presente' : '❌ FALTANTE');
+  console.warn('[Supabase] VITE_SUPABASE_ANON_KEY:', metaEnv.VITE_SUPABASE_ANON_KEY ? '✅ presente' : '❌ FALTANTE');
+}
+
 // @ts-ignore
-const envUrl = import.meta.env.VITE_SUPABASE_URL || '';
+const envUrl = (import.meta as any).env?.VITE_SUPABASE_URL || '';
 // @ts-ignore
-const envKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+const envKey = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || '';
+
+const DEFAULT_SUPABASE_URL = 'https://hogfhasodyoixwbgusjk.supabase.co';
+const DEFAULT_SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhvZ2ZoYXNvZHlvaXh3Ymd1c2prIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAwMTAyMTUsImV4cCI6MjA5NTU4NjIxNX0.beAiAfni40JmnFYqazDxbQmCULxqdBb3KXhFOte1VuM';
+
+// Seed localStorage with default credentials if not already configured
+if (typeof window !== 'undefined') {
+  if (!localStorage.getItem('leonisa_supabase_url')) {
+    localStorage.setItem('leonisa_supabase_url', DEFAULT_SUPABASE_URL);
+  }
+  if (!localStorage.getItem('leonisa_supabase_anon_key')) {
+    localStorage.setItem('leonisa_supabase_anon_key', DEFAULT_SUPABASE_KEY);
+  }
+}
 
 // Retrieve from localStorage if env is not found
 const storedUrl = typeof window !== 'undefined' ? localStorage.getItem('leonisa_supabase_url') || '' : '';
 const storedKey = typeof window !== 'undefined' ? localStorage.getItem('leonisa_supabase_anon_key') || '' : '';
 
-const rawSupabaseUrl = envUrl || storedUrl || '';
-const rawSupabaseKey = envKey || storedKey || '';
+const rawSupabaseUrl = envUrl || storedUrl || DEFAULT_SUPABASE_URL;
+const rawSupabaseKey = envKey || storedKey || DEFAULT_SUPABASE_KEY;
 
 export let supabase: any = null;
 
@@ -39,6 +59,14 @@ export function updateSupabaseConfig(url: string, key: string) {
     try {
       supabase = createClient(sanitizedUrl, key.trim());
       console.log("🚀 Supabase Client re-initialized successfully dynamically!");
+      
+      // NUEVO: Notificar al Player que debe re-suscribirse
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('supabase-ready', { 
+          detail: { url: sanitizedUrl, key: key.trim() } 
+        }));
+      }
+      
       return true;
     } catch (err) {
       console.error("Failed to re-initialize Supabase:", err);

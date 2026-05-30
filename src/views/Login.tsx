@@ -5,8 +5,8 @@ import { Monitor, Lock, User, AlertCircle, Info, Eye, EyeOff } from 'lucide-reac
 
 export default function Login() {
   const navigate = useNavigate();
-  const [username, setUsername] = React.useState('');
-  const [password, setPassword] = React.useState('');
+  const [username, setUsername] = React.useState('admin');
+  const [password, setPassword] = React.useState('123');
   const [showPassword, setShowPassword] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(false);
